@@ -1,25 +1,67 @@
 # FlowLink
 
-FlowLink is a Tauri + Rust + React MVP scaffold for cross-device mouse handoff on macOS and Windows.
+FlowLink 是一个基于 `Tauri + Rust + React` 的跨设备协同控制项目，目前这版属于 MVP 基础骨架，目标是支持 macOS 和 Windows 在局域网内完成类似“扩展屏”体验的鼠标跨设备切换。
 
-This repository is implemented from the product and architecture documents in [`docs/`](./docs/), with the first delivery focused on:
+当前仓库是根据 [`docs/`](./docs/) 中的产品文档和技术设计文档实现的第一版代码基础，当前重点包括：
 
-- Tauri desktop shell with a React control panel
-- Rust domain models for identity, layout, peers, session, and permissions
-- Binary protocol framing and pairing-code utilities
-- JSON storage with atomic writes and schema-aware defaults
-- Session state management and edge-detection primitives
+- Tauri 桌面应用壳和 React 控制面板
+- Rust 侧的身份、布局、发现设备、会话、权限等核心数据模型
+- 二进制协议分帧、配对码生成等基础协议能力
+- 基于 JSON 的本地存储和原子写入能力
+- 会话状态管理和边缘切换判定基础逻辑
 
-## Structure
+## 项目结构
 
-- `src/`: React + TypeScript UI
-- `src-tauri/`: Rust core and desktop shell
-- `docs/`: PRD and technical design reference
+- `src/`：React + TypeScript 前端界面
+- `src-tauri/`：Rust 核心逻辑与 Tauri 桌面端
+- `docs/`：产品、架构、协议、存储、路线图等设计文档
 
-## Next Steps
+## 当前进度
 
-- Wire real mDNS discovery
-- Add trusted TCP session handshake
-- Implement platform-specific input capture/injection
-- Integrate pairing confirmation and heartbeat events
+目前已经完成：
 
+- 前后端基础工程搭建
+- 本机状态、设备列表、布局编辑、诊断信息等基础界面
+- 配置、身份、布局、协议、会话、存储等 Rust 模块骨架
+- 前端构建验证通过
+
+目前还未完成：
+
+- 真实 mDNS / UDP 设备发现
+- 可信 TCP 会话与心跳重连
+- macOS / Windows 鼠标监听与注入
+- 完整配对确认流程
+- 真正可用的跨设备控制链路
+
+## 后续开发建议
+
+如果你后面想把它真正做成一个可安装、可发布的软件，**不只是创建 GitHub Release 就够了**。
+
+`GitHub Release` 的作用主要是：
+
+- 给某个版本打标签
+- 挂载构建产物
+- 提供版本说明
+
+但要把项目发展成真正的软件，通常还需要继续完成这些事情：
+
+- 补齐核心功能实现
+- 做 macOS 和 Windows 的权限适配
+- 打包生成安装文件
+- 做基础测试和稳定性验证
+- 规划版本号、变更记录和升级策略
+
+更准确地说：
+
+- `开发成软件`：是把功能、稳定性、打包、测试都做完整
+- `创建 Release`：是把某个已完成版本正式发布出去
+
+## 下一步建议
+
+建议按下面顺序继续推进：
+
+1. 接入真实设备发现能力
+2. 完成 TCP 会话、握手和心跳
+3. 实现平台级鼠标捕获与注入
+4. 打通配对、布局、控制切换完整链路
+5. 最后再做安装包和 Release 发布
