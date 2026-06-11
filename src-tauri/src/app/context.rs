@@ -9,7 +9,7 @@ use thiserror::Error;
 use crate::{
     config::{AppConfig, LayoutConfig},
     discovery::{cache::DiscoveryCache, DiscoveredPeer},
-    identity::{DeviceIdentity, OsArchExt},
+    identity::DeviceIdentity,
     platform::PermissionStatus,
     session::state::SessionSnapshot,
     storage::files::StorageManager,
@@ -106,4 +106,3 @@ impl SharedAppState {
         Self(Arc::new(RwLock::new(context)))
     }
 }
-
