@@ -1,35 +1,36 @@
+import type { AppCopy } from "../app/i18n";
 import type { UiDiagnostics } from "../app/types";
 
 interface DiagnosticsPanelProps {
+  copy: AppCopy;
   diagnostics: UiDiagnostics;
 }
 
-export function DiagnosticsPanel({ diagnostics }: DiagnosticsPanelProps) {
+export function DiagnosticsPanel({ copy, diagnostics }: DiagnosticsPanelProps) {
   return (
     <section className="panel">
       <div className="panel-header">
-        <h2>Diagnostics</h2>
-        <span>Core runtime snapshot</span>
+        <h2>{copy.diagnostics.title}</h2>
+        <span>{copy.diagnostics.subtitle}</span>
       </div>
       <dl className="diagnostics-grid">
         <div>
-          <dt>Discovered Peers</dt>
+          <dt>{copy.diagnostics.discoveredPeers}</dt>
           <dd>{diagnostics.discoveredPeerCount}</dd>
         </div>
         <div>
-          <dt>Trusted Peers</dt>
+          <dt>{copy.diagnostics.trustedPeers}</dt>
           <dd>{diagnostics.trustedPeerCount}</dd>
         </div>
         <div>
-          <dt>Layouts</dt>
+          <dt>{copy.diagnostics.layouts}</dt>
           <dd>{diagnostics.layoutCount}</dd>
         </div>
         <div>
-          <dt>Config Path</dt>
+          <dt>{copy.diagnostics.configPath}</dt>
           <dd>{diagnostics.configPath}</dd>
         </div>
       </dl>
     </section>
   );
 }
-

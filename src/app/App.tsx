@@ -5,31 +5,43 @@ import { LayoutEditor } from "../components/LayoutEditor";
 import { PermissionPanel } from "../components/PermissionPanel";
 import { StatusBar } from "../components/StatusBar";
 import { useAppStatus } from "../hooks/useAppStatus";
+import { type AppLanguage, copy } from "./i18n";
 import { disconnectPeer, saveLayout } from "./tauri";
 import type { LayoutDirection } from "./types";
 
 export function App() {
   const { status, loading, refresh } = useAppStatus();
+  const [language, setLanguage] = useState<AppLanguage>("zh");
   const [layoutDirection, setLayoutDirection] = useState<LayoutDirection>("right");
+  const t = copy[language];
 
   if (loading || !status) {
-    return <div className="app-shell loading-state">Loading FlowLink...</div>;
+    return <div className="app-shell loading-state">{t.loading}</div>;
   }
 
   const primaryPeer = status.discoveredDevices[0];
+  const nextLanguage: AppLanguage = language === "zh" ? "en" : "zh";
 
   return (
-    <main className="app-shell">
+    <main className="app-shell" lang={language === "zh" ? "zh-CN" : "en"}>
       <section className="hero-panel">
-        <p className="eyebrow">Cross-device Control MVP</p>
-        <h1>FlowLink</h1>
-        <p className="hero-copy">
-          A LAN-first control surface for discovering peers, validating permissions, and preparing
-          reliable mouse handoff between macOS and Windows.
-        </p>
+        <div>
+          <p className="eyebrow">{t.heroEyebrow}</p>
+          <h1>FlowLink</h1>
+          <p className="hero-copy">{t.heroDescription}</p>
+        </div>
+        <button
+          type="button"
+          className="language-toggle"
+          aria-label={t.languageToggleLabel}
+          onClick={() => setLanguage(nextLanguage)}
+        >
+          {copy[nextLanguage].languageName}
+        </button>
       </section>
 
       <StatusBar
+        copy={t}
         deviceName={status.localDevice.name}
         session={status.session}
         onRefresh={refresh}
@@ -37,10 +49,11 @@ export function App() {
       />
 
       <div className="content-grid">
-        <PermissionPanel permission={status.permission} />
-        <DeviceList localDevice={status.localDevice} devices={status.discoveredDevices} />
+        <PermissionPanel copy={t} permission={status.permission} />
+        <DeviceList copy={t} localDevice={status.localDevice} devices={status.discoveredDevices} />
         <LayoutEditor
-          peerName={primaryPeer?.name ?? "No peer selected"}
+          copy={t}
+          peerName={primaryPeer?.name ?? t.layout.noPeerSelected}
           direction={layoutDirection}
           enabled={status.savedLayouts[0]?.enabled ?? true}
           onDirectionChange={setLayoutDirection}
@@ -57,9 +70,8 @@ export function App() {
             await refresh();
           }}
         />
-        <DiagnosticsPanel diagnostics={status.diagnostics} />
+        <DiagnosticsPanel copy={t} diagnostics={status.diagnostics} />
       </div>
     </main>
   );
 }
-
