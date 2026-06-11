@@ -1,3 +1,3 @@
 fn main() {
-    flowlink::run();
+    flowlink_lib::run();
 }
