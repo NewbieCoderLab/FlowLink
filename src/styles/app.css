@@ -121,7 +121,10 @@
 .tab-icon img {
   width: 18px;
   height: 18px;
+  display: block;
   border-radius: 5px;
+  clip-path: inset(0 round 5px);
+  object-fit: cover;
 }
 
 .tab-icon::before,
