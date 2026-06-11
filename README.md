@@ -68,10 +68,16 @@ V1 不包含：
 npm install
 ```
 
-启动前端开发服务：
+启动桌面应用开发模式：
 
 ```bash
 npm run dev
+```
+
+仅启动前端开发服务：
+
+```bash
+npm run web:dev
 ```
 
 构建前端资源：

@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.flowlink.app",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "npm run web:dev",
     "beforeBuildCommand": "npm run build",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../dist"
@@ -23,4 +23,3 @@
     }
   }
 }
-
