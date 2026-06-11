@@ -26,4 +26,3 @@ fn frame_round_trip_preserves_header_and_payload() {
 
     assert_eq!(decoded, frame);
 }
-

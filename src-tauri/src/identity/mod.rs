@@ -75,4 +75,3 @@ fn current_arch() -> ArchType {
         _ => ArchType::Unknown,
     }
 }
-

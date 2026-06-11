@@ -3,8 +3,12 @@ use tauri::State;
 use crate::{
     app::context::SharedAppState,
     config::LayoutConfig,
+    input::types::PermissionKind,
     session::controller::emergency_disconnect,
-    ui_api::models::{UiAppStatus, UiDevice, UiDiagnostics, UiError, UiLayoutConfig, UiPermissionStatus, UiSessionStatus},
+    ui_api::models::{
+        UiAppStatus, UiDevice, UiDiagnostics, UiError, UiLayoutConfig, UiPermissionStatus,
+        UiSessionStatus,
+    },
 };
 
 #[tauri::command]
@@ -16,7 +20,12 @@ pub async fn get_app_status(state: State<'_, SharedAppState>) -> Result<UiAppSta
         .iter()
         .map(UiDevice::from)
         .collect::<Vec<_>>();
-    let saved_layouts = app.config.layouts.iter().map(UiLayoutConfig::from).collect();
+    let saved_layouts = app
+        .config
+        .layouts
+        .iter()
+        .map(UiLayoutConfig::from)
+        .collect();
 
     Ok(UiAppStatus {
         local_device,
@@ -29,7 +38,9 @@ pub async fn get_app_status(state: State<'_, SharedAppState>) -> Result<UiAppSta
 }
 
 #[tauri::command]
-pub async fn list_discovered_devices(state: State<'_, SharedAppState>) -> Result<Vec<UiDevice>, UiError> {
+pub async fn list_discovered_devices(
+    state: State<'_, SharedAppState>,
+) -> Result<Vec<UiDevice>, UiError> {
     let app = state.0.read().map_err(lock_error)?;
     Ok(app
         .list_discovered_devices()
@@ -78,7 +89,25 @@ pub async fn connect_peer(_peer_id: String) -> Result<(), UiError> {
 }
 
 #[tauri::command]
-pub async fn open_permission_settings(_permission: String) -> Result<(), UiError> {
+pub async fn open_permission_settings(
+    state: State<'_, SharedAppState>,
+    permission: String,
+) -> Result<(), UiError> {
+    if let Some(kind) = permission_kind(&permission) {
+        let mut app = state.0.write().map_err(lock_error)?;
+        let _ = app.input.request_permissions(kind);
+        app.refresh_permissions();
+    }
+
+    #[cfg(target_os = "macos")]
+    crate::platform::macos_permissions::open_settings_pane(&permission).map_err(|message| {
+        UiError {
+            code: "open_permission_settings_failed".into(),
+            message,
+            recoverable: true,
+        }
+    })?;
+
     Ok(())
 }
 
@@ -98,3 +127,11 @@ fn app_error(err: crate::app::context::AppError) -> UiError {
     }
 }
 
+fn permission_kind(value: &str) -> Option<PermissionKind> {
+    match value {
+        "accessibility" => Some(PermissionKind::Accessibility),
+        "input_monitoring" => Some(PermissionKind::InputMonitoring),
+        "windows_input" => Some(PermissionKind::WindowsInput),
+        _ => None,
+    }
+}

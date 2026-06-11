@@ -17,14 +17,17 @@ pub fn is_handoff_edge_hit(layout: &LayoutConfig, bounds: Rect, pointer: Point) 
             pointer.x <= left + thickness && pointer.y >= top + guard && pointer.y <= bottom - guard
         }
         LayoutDirection::Right => {
-            pointer.x >= right - thickness && pointer.y >= top + guard && pointer.y <= bottom - guard
+            pointer.x >= right - thickness
+                && pointer.y >= top + guard
+                && pointer.y <= bottom - guard
         }
         LayoutDirection::Top => {
             pointer.y <= top + thickness && pointer.x >= left + guard && pointer.x <= right - guard
         }
         LayoutDirection::Bottom => {
-            pointer.y >= bottom - thickness && pointer.x >= left + guard && pointer.x <= right - guard
+            pointer.y >= bottom - thickness
+                && pointer.x >= left + guard
+                && pointer.x <= right - guard
         }
     }
 }
-

@@ -24,7 +24,11 @@ impl Default for AppConfig {
 
 impl AppConfig {
     pub fn upsert_layout(&mut self, layout: LayoutConfig) {
-        if let Some(existing) = self.layouts.iter_mut().find(|item| item.peer_id == layout.peer_id) {
+        if let Some(existing) = self
+            .layouts
+            .iter_mut()
+            .find(|item| item.peer_id == layout.peer_id)
+        {
             *existing = layout;
         } else {
             self.layouts.push(layout);
@@ -91,4 +95,3 @@ pub enum TrustState {
     Blocked,
     Removed,
 }
-

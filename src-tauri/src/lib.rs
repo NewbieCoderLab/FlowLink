@@ -18,11 +18,9 @@ use tauri::Manager;
 pub fn run() {
     let builder = tauri::Builder::default()
         .setup(|app| {
-            telemetry::logging::init_logging();
-            let config_dir = app
-                .path()
-                .app_config_dir()
-                .map_err(|err| err.to_string())?;
+            let log_dir = app.path().app_log_dir().ok();
+            telemetry::logging::init_logging(log_dir);
+            let config_dir = app.path().app_config_dir().map_err(|err| err.to_string())?;
             let context = AppContext::load_or_default(config_dir).map_err(|err| err.to_string())?;
             app.manage(SharedAppState::new(context));
             Ok(())
@@ -42,4 +40,3 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("failed to run FlowLink application");
 }
-

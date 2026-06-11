@@ -5,4 +5,3 @@ pub fn generate_public_key_stub() -> Vec<u8> {
     thread_rng().fill_bytes(&mut bytes);
     bytes
 }
-

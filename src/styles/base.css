@@ -1,12 +1,33 @@
 :root {
-  color: #f3efe7;
-  background:
-    radial-gradient(circle at top left, rgba(237, 128, 71, 0.22), transparent 30%),
-    linear-gradient(135deg, #0f1720, #14283a 50%, #0f2234);
-  font-family: "Avenir Next", "Segoe UI", sans-serif;
-  line-height: 1.5;
+  /* Type & layout */
+  --fl-text-primary: #1d1f24;
+  --fl-text-secondary: #5b6370;
+  --fl-text-tertiary: #8b929c;
+  --fl-accent: #0a84ff;
+  --fl-accent-soft: rgba(10, 132, 255, 0.16);
+  --fl-violet: #5e5ce6;
+  --fl-violet-soft: rgba(94, 92, 230, 0.16);
+  --fl-success: #30d158;
+  --fl-warning: #ff9f0a;
+  --fl-danger: #ff453a;
+  --fl-border: rgba(60, 70, 90, 0.14);
+  --fl-border-strong: rgba(60, 70, 90, 0.22);
+  --fl-surface: rgba(255, 255, 255, 0.55);
+  --fl-surface-strong: rgba(255, 255, 255, 0.72);
+  --fl-shadow-sm: 0 1px 2px rgba(40, 50, 70, 0.05);
+  --fl-shadow-md: 0 6px 16px rgba(40, 50, 70, 0.08);
+  --fl-radius-sm: 6px;
+  --fl-radius-md: 10px;
+  --fl-radius-lg: 14px;
+
+  color: var(--fl-text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "Segoe UI Variable", "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", sans-serif;
+  font-feature-settings: "ss01", "ss02";
   font-weight: 400;
   font-synthesis: none;
+  line-height: 1.4;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -19,15 +40,69 @@
 html,
 body,
 #root {
+  width: 100%;
+  height: 100%;
   margin: 0;
-  min-height: 100%;
+  background: transparent;
 }
 
 body {
-  min-height: 100vh;
+  overflow: hidden;
+}
+
+/* Solid mode: paint a soft gradient when liquid glass is off, so the window
+   still looks intentional on platforms without native vibrancy. */
+#root.solid-bg {
+  background-color: #eef1f5;
+  background-image:
+    radial-gradient(700px 500px at 12% -8%, rgba(10, 132, 255, 0.14), transparent 60%),
+    radial-gradient(600px 400px at 105% 110%, rgba(94, 92, 230, 0.12), transparent 60%),
+    linear-gradient(180deg, #f0f3f7 0%, #dde2e9 100%);
+}
+
+#root.liquid-glass {
+  background: transparent;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fl-text-primary: #f2f4f7;
+    --fl-text-secondary: #b9c0c9;
+    --fl-text-tertiary: #828a94;
+    --fl-border: rgba(255, 255, 255, 0.1);
+    --fl-border-strong: rgba(255, 255, 255, 0.18);
+    --fl-surface: rgba(255, 255, 255, 0.06);
+    --fl-surface-strong: rgba(255, 255, 255, 0.12);
+  }
+
+  #root.solid-bg {
+    background-color: #1c1f25;
+    background-image:
+      radial-gradient(700px 500px at 12% -8%, rgba(10, 132, 255, 0.16), transparent 60%),
+      radial-gradient(600px 400px at 105% 110%, rgba(94, 92, 230, 0.14), transparent 60%),
+      linear-gradient(180deg, #1d2026 0%, #15181d 100%);
+  }
 }
 
 button {
   font: inherit;
+  color: inherit;
 }
 
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: rgba(120, 130, 145, 0.32);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(120, 130, 145, 0.5);
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}

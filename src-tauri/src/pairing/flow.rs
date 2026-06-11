@@ -25,3 +25,8 @@ impl PairingFlow {
     }
 }
 
+impl Default for PairingFlow {
+    fn default() -> Self {
+        Self::new()
+    }
+}

@@ -16,4 +16,3 @@ pub struct Frame {
     pub header: FrameHeader,
     pub payload: Vec<u8>,
 }
-

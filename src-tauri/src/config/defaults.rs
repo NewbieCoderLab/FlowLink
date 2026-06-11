@@ -31,4 +31,3 @@ pub fn default_app_config() -> AppConfig {
         updated_at_ms: now_ms(),
     }
 }
-

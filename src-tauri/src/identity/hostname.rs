@@ -5,4 +5,3 @@ pub fn default_device_name() -> String {
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| "FlowLink Device".to_string())
 }
-

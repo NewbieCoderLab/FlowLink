@@ -67,4 +67,3 @@ pub enum MessageType {
     Error = 90,
     Goodbye = 99,
 }
-

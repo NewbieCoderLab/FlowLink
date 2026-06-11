@@ -107,7 +107,11 @@ impl From<&DiscoveredPeer> for UiDevice {
             arch: value.arch,
             app_version: value.app_version.clone(),
             protocol_version: value.protocol_version,
-            address_label: value.addresses.first().cloned().unwrap_or_else(|| "-".into()),
+            address_label: value
+                .addresses
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "-".into()),
             status: if value.pairing_available {
                 "available".into()
             } else {

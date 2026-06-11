@@ -13,11 +13,28 @@
     "windows": [
       {
         "title": "FlowLink",
-        "width": 1280,
-        "height": 840,
-        "resizable": true
+        "width": 450,
+        "height": 448,
+        "minWidth": 450,
+        "minHeight": 448,
+        "maxWidth": 450,
+        "maxHeight": 448,
+        "resizable": false,
+        "maximizable": false,
+        "fullscreen": false,
+        "transparent": true,
+        "decorations": true,
+        "shadow": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "backgroundColor": "#00000000",
+        "windowEffects": {
+          "effects": ["tooltip"],
+          "state": "followsWindowActiveState"
+        }
       }
     ],
+    "macOSPrivateApi": true,
     "security": {
       "csp": null
     }

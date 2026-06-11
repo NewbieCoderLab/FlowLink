@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{cmp::Reverse, collections::HashMap};
 
 use crate::{discovery::DiscoveredPeer, storage::files::now_ms};
 
@@ -27,8 +27,7 @@ impl DiscoveryCache {
             .filter(|peer| peer.last_seen_ms >= cutoff)
             .cloned()
             .collect::<Vec<_>>();
-        peers.sort_by(|left, right| right.last_seen_ms.cmp(&left.last_seen_ms));
+        peers.sort_by_key(|peer| Reverse(peer.last_seen_ms));
         peers
     }
 }
-

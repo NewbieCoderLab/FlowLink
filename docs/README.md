@@ -15,6 +15,11 @@ Recommended reading order:
 9. [MVP Roadmap](./08-mvp-roadmap.md)
 10. [Risk Assessment](./09-risk-assessment.md)
 11. [V2/V3 Evolution](./10-v2-v3-evolution.md)
+12. [Next Steps](./11-next-steps.md)
+
+Recent additions:
+
+- `11-next-steps.md`：在 V1 骨架就绪后，把 Phase 0~7 拆为 9 个 Sprint 的实施清单，并锁定 Noise XX + Ed25519 公钥 pin 作为 V1 加密通道。
 
 Primary recommendation: build V1 with **Tauri + Rust**.
 

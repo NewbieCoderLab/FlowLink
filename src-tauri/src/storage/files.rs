@@ -1,5 +1,6 @@
 use std::{
     fs,
+    io::ErrorKind,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -90,7 +91,16 @@ where
 {
     if path.exists() {
         let content = fs::read_to_string(path).map_err(|err| StorageError::Io(err.to_string()))?;
-        serde_json::from_str(&content).map_err(|err| StorageError::Serialization(err.to_string()))
+        match serde_json::from_str(&content) {
+            Ok(value) => Ok(value),
+            Err(err) if err.classify() != serde_json::error::Category::Data => {
+                backup_corrupt_file(path)?;
+                let default_value = create_default();
+                write_json_atomic(path, &default_value)?;
+                Ok(default_value)
+            }
+            Err(err) => Err(StorageError::Serialization(err.to_string())),
+        }
     } else {
         let default_value = create_default();
         write_json_atomic(path, &default_value)?;
@@ -98,11 +108,50 @@ where
     }
 }
 
+fn backup_corrupt_file(path: &Path) -> Result<(), StorageError> {
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| StorageError::Io("invalid storage file name".into()))?;
+    let timestamp = now_ms();
+    for attempt in 0..100 {
+        let backup_name = if attempt == 0 {
+            format!("{file_name}.corrupt.{timestamp}")
+        } else {
+            format!("{file_name}.corrupt.{timestamp}.{attempt}")
+        };
+        let backup_path = path.with_file_name(backup_name);
+        if backup_path.exists() {
+            continue;
+        }
+        match fs::rename(path, backup_path) {
+            Ok(()) => return Ok(()),
+            Err(err) if err.kind() == ErrorKind::AlreadyExists => continue,
+            Err(err) => return Err(StorageError::Io(err.to_string())),
+        }
+    }
+
+    Err(StorageError::Io("unable to create corrupt backup".into()))
+}
+
 pub fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<(), StorageError> {
     let tmp_path = path.with_extension("json.tmp");
     let bytes = serde_json::to_vec_pretty(value)
         .map_err(|err| StorageError::Serialization(err.to_string()))?;
     fs::write(&tmp_path, bytes).map_err(|err| StorageError::Io(err.to_string()))?;
-    fs::rename(&tmp_path, path).map_err(|err| StorageError::Io(err.to_string()))
+    replace_file(&tmp_path, path)?;
+    Ok(())
 }
 
+#[cfg(not(windows))]
+fn replace_file(from: &Path, to: &Path) -> Result<(), StorageError> {
+    fs::rename(from, to).map_err(|err| StorageError::Io(err.to_string()))
+}
+
+#[cfg(windows)]
+fn replace_file(from: &Path, to: &Path) -> Result<(), StorageError> {
+    if to.exists() {
+        fs::remove_file(to).map_err(|err| StorageError::Io(err.to_string()))?;
+    }
+    fs::rename(from, to).map_err(|err| StorageError::Io(err.to_string()))
+}

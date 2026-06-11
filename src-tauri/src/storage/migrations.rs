@@ -1,2 +1,1 @@
 pub const CURRENT_SCHEMA_VERSION: u16 = 1;
-

@@ -7,4 +7,3 @@ pub struct DiagnosticsSnapshot {
     pub layout_count: usize,
     pub config_path: String,
 }
-

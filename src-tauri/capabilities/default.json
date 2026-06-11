@@ -3,6 +3,10 @@
   "identifier": "default",
   "description": "Default desktop capability for FlowLink.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-size",
+    "core:window:allow-set-effects",
+    "core:window:allow-start-dragging"
+  ]
 }
-

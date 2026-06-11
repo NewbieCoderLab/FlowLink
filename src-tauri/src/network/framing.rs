@@ -9,6 +9,8 @@ pub enum FrameError {
     FrameTooLarge,
     #[error("buffer does not contain a full frame yet")]
     Incomplete,
+    #[error("frame length is smaller than the header")]
+    InvalidFrameLength,
 }
 
 pub fn encode_frame(frame: &Frame) -> Result<Vec<u8>, FrameError> {
@@ -37,6 +39,9 @@ pub fn decode_frame(buffer: &mut BytesMut) -> Result<Frame, FrameError> {
     if frame_len > MAX_FRAME_LENGTH {
         return Err(FrameError::FrameTooLarge);
     }
+    if frame_len < HEADER_LEN {
+        return Err(FrameError::InvalidFrameLength);
+    }
     if buffer.len() < 4 + frame_len {
         return Err(FrameError::Incomplete);
     }
@@ -59,4 +64,3 @@ pub fn decode_frame(buffer: &mut BytesMut) -> Result<Frame, FrameError> {
         payload,
     })
 }
-

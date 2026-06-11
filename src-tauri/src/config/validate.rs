@@ -19,4 +19,3 @@ pub fn validate_app_config(config: &AppConfig) -> Result<(), ValidationError> {
     }
     Ok(())
 }
-

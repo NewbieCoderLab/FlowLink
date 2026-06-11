@@ -10,6 +10,7 @@ use crate::{
     config::{AppConfig, LayoutConfig},
     discovery::{cache::DiscoveryCache, DiscoveredPeer},
     identity::DeviceIdentity,
+    input::{platform_input, InputPlatform},
     platform::PermissionStatus,
     session::state::SessionSnapshot,
     storage::files::StorageManager,
@@ -36,6 +37,7 @@ pub struct AppContext {
     pub config: AppConfig,
     pub trusted_peers: TrustedPeerStore,
     pub discovery: DiscoveryCache,
+    pub input: Box<dyn InputPlatform>,
     pub permissions: PermissionStatus,
     pub session: SessionSnapshot,
 }
@@ -60,12 +62,15 @@ impl AppContext {
         crate::config::validate::validate_app_config(&merged_config)
             .map_err(|err| AppError::Validation(err.to_string()))?;
 
-        let mut discovery = DiscoveryCache::new(merged_config.discovery.stale_after_ms);
-        discovery.upsert(DiscoveredPeer::demo_peer());
+        let discovery = DiscoveryCache::new(merged_config.discovery.stale_after_ms);
+
+        let input = platform_input();
+        let permissions = input.permissions();
 
         Ok(Self {
             storage,
-            permissions: PermissionStatus::from_identity(&local_identity),
+            permissions,
+            input,
             local_identity,
             config: merged_config,
             trusted_peers,
@@ -95,6 +100,11 @@ impl AppContext {
             layout_count: self.config.layouts.len(),
             config_path: self.storage.base_dir.display().to_string(),
         }
+    }
+
+    pub fn refresh_permissions(&mut self) -> PermissionStatus {
+        self.permissions = self.input.permissions();
+        self.permissions.clone()
     }
 }
 

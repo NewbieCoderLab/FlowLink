@@ -8,4 +8,3 @@ pub fn emergency_disconnect(snapshot: &mut SessionSnapshot) {
     snapshot.connected_since_ms = None;
     snapshot.updated_at_ms = crate::storage::files::now_ms();
 }
-
