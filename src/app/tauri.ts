@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { UiAppStatus, UiLayoutConfig, UiScreenTopology } from "./types";
 
+const isTauriRuntime = "__TAURI_INTERNALS__" in window;
+
 const mockStatus: UiAppStatus = {
   localDevice: {
     deviceId: "local-demo-device",
@@ -108,6 +110,34 @@ export async function openPermissionSettings(permission: string): Promise<void> 
     await invoke("open_permission_settings", { permission });
   } catch {
     // Browser preview has no system settings integration.
+  }
+}
+
+export async function probePeerIp(ip: string): Promise<void> {
+  try {
+    await invoke("probe_peer_ip", { ip });
+  } catch {
+    if (isTauriRuntime) {
+      throw new Error("Failed to send manual discovery probe");
+    }
+
+    const peerId = `manual-${ip}`;
+    if (!mockStatus.discoveredDevices.some((device) => device.deviceId === peerId)) {
+      mockStatus.discoveredDevices = [
+        {
+          deviceId: peerId,
+          name: `Manual ${ip}`,
+          os: "unknown",
+          arch: "unknown",
+          appVersion: "0.1.0",
+          protocolVersion: 1,
+          addressLabel: `${ip}:42424`,
+          status: "available",
+          lastSeenLabel: "just now"
+        },
+        ...mockStatus.discoveredDevices
+      ];
+    }
   }
 }
 

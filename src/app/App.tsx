@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Effect, EffectState, getCurrentWindow } from "@tauri-apps/api/window";
 import { useAppStatus } from "../hooks/useAppStatus";
 import { LayoutCanvas } from "../components/LayoutCanvas";
-import { disconnectPeer, openPermissionSettings, saveLayout } from "./tauri";
+import { disconnectPeer, openPermissionSettings, probePeerIp, saveLayout } from "./tauri";
 import appIcon from "../assets/app-icon.png";
 import { type AppLanguage, copy } from "./i18n";
 import type { LayoutDirection, OsType, UiDevice } from "./types";
@@ -84,6 +84,8 @@ export function App() {
   const [discoveryEnabled, setDiscoveryEnabled] = useState(true);
   const [autoReconnect, setAutoReconnect] = useState(true);
   const [liquidGlass, setLiquidGlass] = useState(true);
+  const [manualPeerIp, setManualPeerIp] = useState("");
+  const [manualProbeState, setManualProbeState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const t = copy[language];
 
   useEffect(() => {
@@ -149,6 +151,18 @@ export function App() {
     void disconnectPeer().then(() => {
       void refresh();
     });
+  };
+
+  const handleManualProbe = () => {
+    const ip = manualPeerIp.trim();
+    if (!ip || manualProbeState === "sending") return;
+    setManualProbeState("sending");
+    void probePeerIp(ip)
+      .then(async () => {
+        setManualProbeState("sent");
+        await refresh();
+      })
+      .catch(() => setManualProbeState("error"));
   };
 
   return (
@@ -283,6 +297,42 @@ export function App() {
             <div className="section-title">
               <span>{t.devices.title}</span>
               <small>{t.devices.discovered(status.discoveredDevices.length)}</small>
+            </div>
+            <div className="manual-discovery">
+              <label htmlFor="manual-peer-ip">{t.devices.manualIpLabel}</label>
+              <div className="manual-discovery-form">
+                <input
+                  id="manual-peer-ip"
+                  type="text"
+                  inputMode="numeric"
+                  value={manualPeerIp}
+                  placeholder={t.devices.manualIpPlaceholder}
+                  onChange={(event) => {
+                    setManualPeerIp(event.target.value);
+                    setManualProbeState("idle");
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      handleManualProbe();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={!manualPeerIp.trim() || manualProbeState === "sending"}
+                  onClick={handleManualProbe}
+                >
+                  {manualProbeState === "sending" ? t.devices.manualSending : t.devices.addManual}
+                </button>
+              </div>
+              <small>
+                {manualProbeState === "sent"
+                  ? t.devices.manualSent
+                  : manualProbeState === "error"
+                    ? t.devices.manualError
+                    : t.devices.manualIpHint}
+              </small>
             </div>
             {status.discoveredDevices.length === 0 ? (
               <div className="device-empty">

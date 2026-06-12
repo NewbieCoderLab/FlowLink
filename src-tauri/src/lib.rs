@@ -39,6 +39,7 @@ pub fn run() {
             ui_api::commands::start_pairing,
             ui_api::commands::confirm_pairing,
             ui_api::commands::connect_peer,
+            ui_api::commands::probe_peer_ip,
             ui_api::commands::open_permission_settings
         ]);
 

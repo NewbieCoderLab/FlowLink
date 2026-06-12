@@ -1,8 +1,14 @@
+use std::{
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket},
+    time::Duration,
+};
+
 use tauri::{AppHandle, Emitter, State};
 
 use crate::{
     app::context::SharedAppState,
     config::LayoutConfig,
+    discovery::udp::announce_to_peer,
     input::types::PermissionKind,
     session::controller::emergency_disconnect,
     ui_api::events,
@@ -96,6 +102,55 @@ pub async fn confirm_pairing(_pairing_id: String) -> Result<(), UiError> {
 #[tauri::command]
 pub async fn connect_peer(_peer_id: String) -> Result<(), UiError> {
     Ok(())
+}
+
+#[tauri::command]
+pub async fn probe_peer_ip(state: State<'_, SharedAppState>, ip: String) -> Result<(), UiError> {
+    let peer_ip = ip.parse::<IpAddr>().map_err(|_| UiError {
+        code: "invalid_peer_ip".into(),
+        message: "Please enter a valid IPv4 or IPv6 address".into(),
+        recoverable: true,
+    })?;
+
+    let (identity, service_port, udp_port, interval_ms) = {
+        let app = state.0.read().map_err(lock_error)?;
+        (
+            app.local_identity.clone(),
+            app.config.network.listen_port,
+            app.config.discovery.udp_port,
+            app.config.discovery.announce_interval_ms,
+        )
+    };
+    let destination = SocketAddr::from((peer_ip, udp_port));
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let bind_addr = match peer_ip {
+            IpAddr::V4(_) => SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)),
+            IpAddr::V6(_) => SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0)),
+        };
+        let socket = UdpSocket::bind(bind_addr).map_err(|err| UiError {
+            code: "manual_discovery_bind_failed".into(),
+            message: err.to_string(),
+            recoverable: true,
+        })?;
+        for _ in 0..3 {
+            announce_to_peer(&socket, &identity, service_port, destination).map_err(|err| {
+                UiError {
+                    code: "manual_discovery_send_failed".into(),
+                    message: err.to_string(),
+                    recoverable: true,
+                }
+            })?;
+            std::thread::sleep(Duration::from_millis(interval_ms.clamp(100, 1_500)));
+        }
+        Ok::<(), UiError>(())
+    })
+    .await
+    .map_err(|err| UiError {
+        code: "manual_discovery_task_failed".into(),
+        message: err.to_string(),
+        recoverable: true,
+    })?
 }
 
 #[tauri::command]

@@ -53,6 +53,12 @@ export interface AppCopy {
     connect: string;
     forget: string;
     addManual: string;
+    manualIpLabel: string;
+    manualIpPlaceholder: string;
+    manualIpHint: string;
+    manualSending: string;
+    manualSent: string;
+    manualError: string;
   };
   permissions: {
     title: string;
@@ -169,7 +175,13 @@ export const copy: Record<AppLanguage, AppCopy> = {
       pair: "配对",
       connect: "连接",
       forget: "取消信任",
-      addManual: "手动添加"
+      addManual: "手动添加",
+      manualIpLabel: "通过 IP 添加设备",
+      manualIpPlaceholder: "例如 192.168.1.20",
+      manualIpHint: "如果自动发现失败，在两台设备上分别输入对方 IP。",
+      manualSending: "发送中",
+      manualSent: "已发送发现请求，请保持对方应用运行；必要时也在对方设备输入本机 IP。",
+      manualError: "发送失败，请检查 IP、防火墙和网络。"
     },
     permissions: {
       title: "权限",
@@ -314,7 +326,13 @@ export const copy: Record<AppLanguage, AppCopy> = {
       pair: "Pair",
       connect: "Connect",
       forget: "Forget",
-      addManual: "Add by IP"
+      addManual: "Add by IP",
+      manualIpLabel: "Add device by IP",
+      manualIpPlaceholder: "e.g. 192.168.1.20",
+      manualIpHint: "If auto-discovery fails, enter the other device IP on both machines.",
+      manualSending: "Sending",
+      manualSent: "Discovery probe sent. Keep the other app open; enter this device IP there if needed.",
+      manualError: "Failed to send. Check the IP address, firewall, and network."
     },
     permissions: {
       title: "Permissions",
