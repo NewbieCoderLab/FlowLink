@@ -164,6 +164,26 @@ fn file_secret_store_saves_and_loads_private_key() {
     ));
 }
 
+#[cfg(unix)]
+#[test]
+fn file_secret_store_writes_private_key_with_owner_only_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempdir().expect("tempdir");
+    let store = FileSecretStore::new(dir.path().to_path_buf());
+
+    store
+        .save_private_key(&[9_u8; 32])
+        .expect("save private key");
+    let mode = fs::metadata(dir.path().join("identity.key"))
+        .expect("metadata")
+        .permissions()
+        .mode()
+        & 0o777;
+
+    assert_eq!(mode, 0o600);
+}
+
 fn is_corrupt_backup(file_name: &str) -> bool {
     file_name.starts_with("config.json.corrupt.")
 }
