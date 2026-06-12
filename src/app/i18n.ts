@@ -174,9 +174,9 @@ export const copy: Record<AppLanguage, AppCopy> = {
       title: "权限",
       subtitle: "缺失权限会导致鼠标监听或注入失败",
       accessibility: "辅助功能",
-      accessibilityHint: "用于向远端设备发送鼠标事件",
+      accessibilityHint: "用于注入鼠标事件；授权后回到 FlowLink 会自动刷新",
       inputMonitoring: "输入监听",
-      inputMonitoringHint: "用于监听本机鼠标移动与点击",
+      inputMonitoringHint: "用于监听本机鼠标移动与点击；请给当前 FlowLink 应用授权",
       windowsInput: "Windows 输入能力",
       windowsInputHint: "普通用户权限即可，无需管理员",
       open: "前往设置"
@@ -319,9 +319,9 @@ export const copy: Record<AppLanguage, AppCopy> = {
       title: "Permissions",
       subtitle: "Without these, capture or injection will fail",
       accessibility: "Accessibility",
-      accessibilityHint: "Required to inject mouse events into other apps",
+      accessibilityHint: "Required to inject mouse events; FlowLink refreshes after you return",
       inputMonitoring: "Input Monitoring",
-      inputMonitoringHint: "Required to observe local mouse movement",
+      inputMonitoringHint: "Required to observe local mouse movement; grant it to the current FlowLink app",
       windowsInput: "Windows Input",
       windowsInputHint: "Normal user privileges are sufficient",
       open: "Open Settings"

@@ -41,7 +41,13 @@
 - `Tauri 2 + React + TypeScript` 工程能启动，命令注册齐全，前端通过 `useAppStatus` 读取 `get_app_status`。
 - Rust 模块树按 `07-project-structure.md` 切分到位，`lib.rs` 装配 `AppContext` 并注入 Tauri state。
 - 本地存储：`StorageManager` 已实现 `identity / config / trusted_peers / layouts` 的读写，写入走 `*.tmp -> rename` 原子路径。
+- 本地存储恢复：坏 JSON 会备份为同目录 `.corrupt.<timestamp>` 并写入默认值；IO 读取失败仍返回 `StorageError::Io`。
 - 数据结构：`AppConfig / NetworkConfig / DiscoveryConfig / LayoutConfig / TrustedPeer / DeviceIdentity / SessionSnapshot / PermissionStatus` 已定义。
+- 测试基线：`src-tauri/tests/` 已覆盖 framing、pairing code、storage、AppContext 启动发现列表；当前 `cargo test` 共 18 个集成测试全绿。
+- 质量基线：本地 `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`npm run build` 均已通过。
+- CI 基线：`.github/workflows/ci.yml` 已配置 macOS + Windows 双 runner，执行 Rust fmt/clippy/test 与前端 build。
+- 日志基线：`telemetry::logging::init_logging` 已接入 `tracing-appender` daily rolling appender，优先写入 Tauri `app_log_dir()`，并用 `Once` 防重复初始化。
+- 启动清理：真实 `AppContext::load_or_default` 不再注入 demo peer；demo 设备仅保留在前端 mock fallback 中。
 
 协议与算法层：
 
@@ -51,6 +57,9 @@
 - 边缘检测：`input::edge::is_handoff_edge_hit` 已支持 `corner_guard_px` 与 `edge_thickness_px`。
 - 重连退避：`network::reconnect::next_backoff_ms` 实现指数退避（未含 jitter）。
 - 发现缓存：`DiscoveryCache` 实现 upsert + stale 过滤。
+- 平台输入抽象：`InputPlatform` trait 与 `NoopInputPlatform` 已存在，`AppContext` 已持有平台输入实现。
+- macOS 输入雏形：`MacInputPlatform` 已有 Event Tap 监听、CGEvent 注入、自注入标记过滤、屏幕拓扑查询和权限查询/请求入口，仍待 spike 实机验收。
+- Windows 输入雏形：`WinInputPlatform` 已有 `WH_MOUSE_LL` 监听、`SendInput` 注入、自注入标记过滤、DPI awareness 与显示器枚举，仍待 Windows 实机编译/验收。
 
 UI 层：
 
@@ -69,23 +78,21 @@ UI 层：
 | `network/listener.rs` | 仅 `format!` 出地址 | 没有 `TcpListener::bind` 与 accept loop |
 | `network/connector.rs` | 仅 `format!` 出地址 | 没有连接尝试 |
 | `network/heartbeat.rs` | 仅返回 `Duration` 常量 | 没有心跳 ping/pong |
-| `input/macos.rs` | 仅返回平台名 | 无 Event Tap / `CGEventPost` |
-| `input/windows.rs` | 仅返回平台名 | 无 `WH_MOUSE_LL` / `SendInput` |
-| `platform/macos_permissions.rs` | 仅一个 label 字符串 | 没有 `AXIsProcessTrustedWithOptions` / `CGPreflightListenEventAccess` |
-| `platform/windows_permissions.rs` | stub | 没有任何检测 |
+| `input/macos.rs` | Event Tap / CGEvent 注入初版 | 仍缺 spike 实机验收、关闭机制、方向/按钮细节确认 |
+| `input/windows.rs` | Hook / SendInput 初版 | 仍缺 Windows 实机编译、关闭机制、侧键注入和 DPI 验收 |
+| `platform/macos_permissions.rs` | 已接 `AXIsProcessTrustedWithOptions` / `CGPreflightListenEventAccess` | 设置面板 URL 和 UI 刷新闭环仍需 S1 验证 |
+| `platform/windows_permissions.rs` | 普通输入返回 granted | 没有完整 integrity level / 管理员窗口限制检测 |
 | `session/controller.rs` | 仅 `emergency_disconnect` | 没有完整状态机驱动 |
 | `pairing/flow.rs` | `PairingFlow::new` 生成 id 与过期时间 | 没有 request/response/confirm 三段，没有 trust 写入 |
 | `identity/keys.rs` | `generate_public_key_stub` 8 行 | 没有 Ed25519 真密钥对 |
 | `storage/secret.rs` | 5 行 stub | 没有 Keychain / DPAPI 后端 |
-| `telemetry/logging.rs` | `init_logging` 没有日志轮转 | 没有 file appender |
-| `ui_api/commands.rs` 中 `start_pairing / confirm_pairing / connect_peer / open_permission_settings` | 全部直接 `Ok(())` | 不连接 Rust Core |
+| `telemetry/metrics.rs` | 仅诊断快照字段 | 没有 RTT / fps / drop / CPU / RSS 采集 |
+| `ui_api/commands.rs` 中 `start_pairing / confirm_pairing / connect_peer` | 仍直接 `Ok(())` 或仅创建 PairingFlow | 不连接 Rust Core |
 
 测试与发布相关：
 
-- 没有任何 `#[cfg(test)]` 单测，`tests/` 目录下也无文件。
-- 没有 `cargo fmt` / `cargo clippy` 的 CI。
 - 没有 `tauri build` 配置签名、公证、打包脚本。
-- 没有 `tracing` file appender 与 log rotation。
+- `tracing` file appender 已有 daily rolling；7 天保留策略尚未实现。
 - 没有 `start_minimized`、托盘、紧急断开快捷键。
 
 ### 2.3 偏离设计文档的地方
@@ -93,8 +100,8 @@ UI 层：
 需要在后续 Sprint 中修正：
 
 - `protocol::frame::HEADER_LEN = 10`，按 00 §5.3 是 10 字节（`version + type + flags + seq` = 2+2+2+4），与 BUF 写入一致；但若把 `length u32` 也算进 header 的话总长是 14。代码以"length 不计入 header"为口径，文档需明确这一点（已在 §5.1 锁定）。
-- `DiscoveredPeer` 在 `AppContext::load_or_default` 里硬编码塞入 `demo_peer()`，调试用，正式版需要去掉并改由真实 mDNS 注入。
-- `PermissionStatus::from_identity` 总是返回 `NotDetermined`，不查询系统。
+- `DiscoveredPeer::demo_peer()` 函数仍保留给 mock/未来测试，但真实 `AppContext::load_or_default` 已不再硬编码注入。
+- `PermissionStatus::from_identity` 仍存在；当前平台输入实现已能返回真实/平台状态，但状态模型仍需在 S1 里整理成完全平台驱动。
 - `MessageType::Other(u8)` 在 `MouseButton` 中带元组数据但 `#[repr(u16)]` 仅在 `MessageType` 上，注意序列化路径 — 鼠标按钮 wire format 在 §5.2 中重新约定。
 
 ---
@@ -213,21 +220,23 @@ S0 Test Harness ─┐
 
 S2/S3/S4 可在 S1 完成 Spike 后并行，S6 必须等 S1/S4/S5 全绿。
 
-### Sprint S0：测试与清理基线（1.5 天）
+### Sprint S0：测试与清理基线（已完成，2026-06-11）
 
 目标：让所有后续 Sprint 都能跑测试、跑 lint、做端到端 dry-run。
 
 任务：
 
-- 在 `src-tauri/Cargo.toml` `[dev-dependencies]` 加 `tokio-test`、`pretty_assertions`、`assert_matches`。
-- 在 `src-tauri/tests/` 新增三个文件：`framing_tests.rs`、`pairing_code_tests.rs`、`storage_tests.rs`。
-- 为现有已实现模块补单测：
+- [x] 在 `src-tauri/Cargo.toml` `[dev-dependencies]` 加 `tokio-test`、`pretty_assertions`、`assert_matches`。
+- [x] 在 `src-tauri/tests/` 新增 `framing_tests.rs`、`pairing_code_tests.rs`、`storage_tests.rs`，并补充 `app_context_tests.rs`。
+- [x] 为现有已实现模块补单测：
   - `framing`：encode→decode 圆环；超大 payload 拒绝；截断帧返回 `Incomplete` 而非 panic；坏长度字段拒绝。
   - `pairing::code::generate_pairing_code`：交换 a/b 顺序结果一致；nonce 不同结果不同；输出永远 6 位。
-  - `storage::files`：tmp→rename 原子；坏 JSON 备份为 `.corrupt.<ts>` 后用默认值启动（这条要求当前 `read_or_default` 行为补强，见下）。
-- 移除 `discovery::mod::DiscoveredPeer::demo_peer` 的硬编码注入（`AppContext::load_or_default` 中那一行 `discovery.upsert(DiscoveredPeer::demo_peer())`）。在前端 mock fallback 里依然保留 demo peer，以便 `npm run web:dev` 体验不变。
-- 新增 `.github/workflows/ci.yml`：macOS + Windows 双 runner，跑 `cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`、`npm run build`。
-- `telemetry::logging::init_logging` 接入 `tracing-appender` + `RollingFileAppender`，按天滚动到 `<app_log_dir>/app.log`，保留 7 天。
+  - `storage::files`：tmp→rename 原子；坏 JSON 备份为 `.corrupt.<ts>` 后用默认值启动；IO 读取失败保持 `StorageError::Io`。
+- [x] 移除 `discovery::mod::DiscoveredPeer::demo_peer` 的硬编码注入（`AppContext::load_or_default` 中那一行 `discovery.upsert(DiscoveredPeer::demo_peer())`）。在前端 mock fallback 里依然保留 demo peer，以便 `npm run web:dev` 体验不变。
+- [x] 新增 `.github/workflows/ci.yml`：macOS + Windows 双 runner，跑 `cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`、`npm run build`。
+- [x] `telemetry::logging::init_logging` 接入 `tracing-appender` + `RollingFileAppender`，按天滚动到 `<app_log_dir>/app.log`。
+
+备注：`tracing-appender` 已完成 daily rolling；“保留 7 天”的自动清理策略未在 S0 实现，留给 S7/S8 hardening。
 
 改动文件：
 
@@ -250,34 +259,42 @@ src-tauri/src/telemetry/logging.rs      (RollingFileAppender)
 cd src-tauri && cargo test
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
+npm run build  # 仓库根目录
 ```
 
 退出标准：
 
-- `cargo test` 至少 12 个用例全绿。
-- 双平台 CI 第一次出绿。
-- 启动时不再插入虚假设备。
+- `cargo test` 至少 12 个用例全绿；当前 18 个集成测试 + 2 个 logging 单测全绿。
+- 本地 `cargo clippy --all-targets -- -D warnings`、`cargo fmt --check`、`npm run build` 全绿。
+- 双平台 CI 配置已就绪；远端首次出绿需等待 push / PR 后确认。
+- 启动时不再插入虚假设备，并由 `app_context_tests.rs` 防回归。
 
 ### Sprint S1：平台输入 Spike（5 天）
 
 目标：完成 00 §8 Phase 0 的真实代码，证明 macOS 与 Windows 都能监听 + 注入鼠标事件并测得本机 capture→inject 延迟。
 
-#### S1.1 macOS 监听与注入（2 天）
+#### S1.1 macOS 监听与注入（实现已完成，手动 QA 待勾选）
 
 任务：
 
-- `src-tauri/src/input/macos.rs` 实现 `MacInputPlatform`：
+- [x] `src-tauri/src/input/macos.rs` 实现 `MacInputPlatform`：
   - 创建独立 std::thread 运行 `CFRunLoop`。
   - 用 `CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap, kCGEventTapOptionListenOnly, mask, callback, refcon)` 监听 `mouseMoved | leftMouseDown | leftMouseUp | rightMouseDown | rightMouseUp | otherMouseDown | otherMouseUp | scrollWheel`。
   - `callback` 内只做坐标读取 + 自注入标记检查 + `mpsc::Sender::try_send(LocalMouseEvent)`，绝不阻塞、不打 log、不分配大对象。
   - 注入路径：`CGEventCreateMouseEvent` / `CGEventSetIntegerValueField(kCGEventSourceUserData, FLOW_TAG)` / `CGEventPost(kCGHIDEventTap)`。
   - 屏幕拓扑：`CGGetActiveDisplayList` + `CGDisplayBounds`，组装 `ScreenTopology`。
-- `src-tauri/src/platform/macos_permissions.rs`：
+- [x] `src-tauri/src/platform/macos_permissions.rs`：
   - `accessibility_status()` 调 `AXIsProcessTrustedWithOptions(kAXTrustedCheckOptionPrompt: false)`。
   - `input_monitoring_status()` 调 `CGPreflightListenEventAccess()`（10.15+）。
   - `request_input_monitoring()` 调 `CGRequestListenEventAccess()`。
-  - `open_settings_pane(kind)` 用 `NSWorkspace::openURL` 打开对应 `x-apple.systempreferences:com.apple.preference.security?...` URL。
-- `src-tauri/src/input/types.rs` 中的 `LocalMouseEvent` 已经够用，直接复用。
+  - `open_settings_pane(kind)` 用 `open x-apple.systempreferences:com.apple.preference.security?...` 打开 Accessibility / Input Monitoring，并 fallback 到 Privacy 总页。
+- [x] `src-tauri/src/input/types.rs` 中的 `LocalMouseEvent` 直接复用；`CaptureHandle` 增加最小 shutdown hook，macOS capture drop 时会请求 `CFRunLoop` 停止并短暂 join。
+- [x] `examples/mac_input_spike.rs` 支持：
+  - 默认监听并统计 1000 个 move/down/up/wheel 事件。
+  - `--inject-move` 注入 100 次小幅移动并打印 median/p95 调用耗时。
+  - `--inject-click` 在当前鼠标位置注入一次 left click。
+  - `--verify-self-filter` 注入带 FLOW_TAG 的事件并确认 Event Tap 不回收。
+  - `--topology` 打印显示器 bounds / scale / primary。
 
 改动文件：
 
@@ -302,14 +319,15 @@ objc2-app-kit = "0.2"
 验证：
 
 - `cargo run --bin flowlink` 后授予 Accessibility + Input Monitoring，前端 Permissions Tab 应在 1 秒内显示 `granted`。
-- 在 mac 上手动跑一个 spike 二进制 `examples/mac_input_spike.rs`：监听并打印鼠标事件 1000 次，再调 `CGEventPost` 注入 100 次平移，打印每次 capture→inject 内联耗时（µs）。
+- 在 mac 上手动跑 `examples/mac_input_spike.rs`：监听并打印鼠标事件 1000 次，再用 `--inject-move` / `--inject-click` / `--verify-self-filter` / `--topology` 验证注入、自过滤与屏幕拓扑。
+- QA 记录见 `bench/results/s1.1-macos.md`。
 
 退出标准：
 
-- 监听到 move/down/up/wheel 四类事件。
-- `CGEventPost` 能让目标 app（如 TextEdit）真实响应点击。
-- 自注入事件被 `kCGEventSourceUserData == FLOW_TAG` 过滤，回调中不再循环。
-- spike 中位延迟 < 1ms（本机回环）。
+- 监听到 move/down/up/wheel 四类事件（需手动 QA 勾选）。
+- `CGEventPost` 能让目标 app（如 TextEdit）真实响应点击（需手动 QA 勾选）。
+- 自注入事件被 `kCGEventSourceUserData == FLOW_TAG` 过滤，回调中不再循环（`--verify-self-filter`）。
+- spike 中位调用延迟可由 `--inject-move` 输出；是否满足 < 1ms 需实机记录。
 
 #### S1.2 Windows 监听与注入（2 天）
 
@@ -914,8 +932,5 @@ V2.0  三台及以上设备布局 + Daemon 化
 - 与 00/04/05 出现冲突时，开一个章节注明，并在下一版（v0.3）合并到主文档。
 
 下一版预期触发：S2 完成后，因为届时协议 wire 第一次真实跑通，需要把 Hello / Discovery / Pairing 的实际字段与 00/04/05 对齐。
-
-
-
 
 

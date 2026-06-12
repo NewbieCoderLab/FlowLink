@@ -1,4 +1,4 @@
-use flowlink::pairing::{code::generate_pairing_code, flow::PairingFlow};
+use flowlink_lib::pairing::{code::generate_pairing_code, flow::PairingFlow};
 
 #[test]
 fn pairing_code_is_stable_for_same_inputs() {

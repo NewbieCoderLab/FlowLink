@@ -1,6 +1,6 @@
 use tempfile::tempdir;
 
-use flowlink::{
+use flowlink_lib::{
     config::{AppConfig, LayoutConfig},
     protocol::messages::LayoutDirection,
     storage::files::{write_json_atomic, LayoutStore, StorageError, StorageManager},
@@ -74,23 +74,51 @@ fn corrupt_config_is_backed_up_and_replaced_with_default() {
     let dir = tempdir().expect("tempdir");
     let storage = StorageManager::new(dir.path().to_path_buf());
     let path = dir.path().join("config.json");
-    fs::write(&path, "{not valid json").expect("write corrupt");
+    let corrupt_content = "{not valid json";
+    fs::write(&path, corrupt_content).expect("write corrupt");
 
     let config = storage.load_config().expect("recover default");
+    let backups = fs::read_dir(dir.path())
+        .expect("read dir")
+        .filter_map(Result::ok)
+        .filter(|entry| is_corrupt_backup(entry.file_name().to_string_lossy().as_ref()))
+        .collect::<Vec<_>>();
+    let backup_name = backups[0].file_name().to_string_lossy().to_string();
+    let timestamp = backup_name
+        .strip_prefix("config.json.corrupt.")
+        .expect("backup prefix");
+    let replaced: AppConfig =
+        serde_json::from_str(&fs::read_to_string(&path).expect("read replacement"))
+            .expect("replacement is valid json");
+
+    assert_eq!(config.schema_version, AppConfig::default().schema_version);
+    assert_eq!(replaced.schema_version, AppConfig::default().schema_version);
+    assert_eq!(backups.len(), 1);
+    assert!(timestamp.parse::<u64>().is_ok());
+    assert_eq!(
+        fs::read_to_string(backups[0].path()).expect("read backup"),
+        corrupt_content
+    );
+    assert!(path.exists());
+}
+
+#[test]
+fn config_read_io_failure_returns_io_error_without_backup() {
+    let dir = tempdir().expect("tempdir");
+    let storage = StorageManager::new(dir.path().to_path_buf());
+    let path = dir.path().join("config.json");
+    fs::create_dir(&path).expect("create directory where config file should be");
+
+    let result = storage.load_config();
+
+    assert!(matches!(result, Err(StorageError::Io(_))));
+    assert!(path.is_dir());
     let backup_count = fs::read_dir(dir.path())
         .expect("read dir")
         .filter_map(Result::ok)
-        .filter(|entry| {
-            entry
-                .file_name()
-                .to_string_lossy()
-                .starts_with("config.json.corrupt.")
-        })
+        .filter(|entry| is_corrupt_backup(entry.file_name().to_string_lossy().as_ref()))
         .count();
-
-    assert_eq!(config.schema_version, AppConfig::default().schema_version);
-    assert_eq!(backup_count, 1);
-    assert!(path.exists());
+    assert_eq!(backup_count, 0);
 }
 
 #[test]
@@ -107,12 +135,11 @@ fn schema_mismatch_returns_error_without_replacing_file() {
     let backup_count = fs::read_dir(dir.path())
         .expect("read dir")
         .filter_map(Result::ok)
-        .filter(|entry| {
-            entry
-                .file_name()
-                .to_string_lossy()
-                .starts_with("config.json.corrupt.")
-        })
+        .filter(|entry| is_corrupt_backup(entry.file_name().to_string_lossy().as_ref()))
         .count();
     assert_eq!(backup_count, 0);
+}
+
+fn is_corrupt_backup(file_name: &str) -> bool {
+    file_name.starts_with("config.json.corrupt.")
 }

@@ -1,4 +1,4 @@
-use flowlink::pairing::code::generate_pairing_code;
+use flowlink_lib::pairing::code::generate_pairing_code;
 
 #[test]
 fn pairing_code_is_stable_when_device_order_is_swapped() {

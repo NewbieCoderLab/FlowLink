@@ -1,10 +1,11 @@
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 use crate::{
     app::context::SharedAppState,
     config::LayoutConfig,
     input::types::PermissionKind,
     session::controller::emergency_disconnect,
+    ui_api::events,
     ui_api::models::{
         UiAppStatus, UiDevice, UiDiagnostics, UiError, UiLayoutConfig, UiPermissionStatus,
         UiSessionStatus,
@@ -90,6 +91,7 @@ pub async fn connect_peer(_peer_id: String) -> Result<(), UiError> {
 
 #[tauri::command]
 pub async fn open_permission_settings(
+    app_handle: AppHandle,
     state: State<'_, SharedAppState>,
     permission: String,
 ) -> Result<(), UiError> {
@@ -107,6 +109,8 @@ pub async fn open_permission_settings(
             recoverable: true,
         }
     })?;
+
+    let _ = app_handle.emit(events::PERMISSION_UPDATED, ());
 
     Ok(())
 }

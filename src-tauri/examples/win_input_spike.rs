@@ -2,7 +2,7 @@
 use std::time::{Duration, Instant};
 
 #[cfg(target_os = "windows")]
-use flowlink::{
+use flowlink_lib::{
     input::{
         types::{PermissionKind, RemoteMouseEvent},
         windows::WinInputPlatform,

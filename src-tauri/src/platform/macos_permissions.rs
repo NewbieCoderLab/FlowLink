@@ -55,15 +55,63 @@ pub fn request_input_monitoring() -> Result<(), String> {
 
 #[cfg(target_os = "macos")]
 pub fn open_settings_pane(kind: &str) -> Result<(), String> {
-    let pane = match kind {
-        "input_monitoring" => {
-            "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent"
+    let mut last_error = None;
+    for pane in settings_pane_urls(kind) {
+        match open_settings_url(pane) {
+            Ok(()) => return Ok(()),
+            Err(err) => last_error = Some(err),
         }
-        _ => "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
-    };
+    }
 
+    Err(last_error.unwrap_or_else(|| "no settings pane URL configured".into()))
+}
+
+#[cfg(target_os = "macos")]
+fn settings_pane_urls(kind: &str) -> &'static [&'static str] {
+    match kind {
+        "input_monitoring" => &[
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent",
+            "x-apple.systempreferences:com.apple.preference.security?Privacy",
+        ],
+        "accessibility" => &[
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+            "x-apple.systempreferences:com.apple.preference.security?Privacy",
+        ],
+        _ => &["x-apple.systempreferences:com.apple.preference.security?Privacy"],
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accessibility_settings_urls_target_accessibility_first() {
+        let urls = settings_pane_urls("accessibility");
+
+        assert_eq!(
+            urls[0],
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+        );
+        assert!(urls.contains(&"x-apple.systempreferences:com.apple.preference.security?Privacy"));
+    }
+
+    #[test]
+    fn input_monitoring_settings_urls_target_listen_event_first() {
+        let urls = settings_pane_urls("input_monitoring");
+
+        assert_eq!(
+            urls[0],
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent"
+        );
+        assert!(urls.contains(&"x-apple.systempreferences:com.apple.preference.security?Privacy"));
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn open_settings_url(url: &str) -> Result<(), String> {
     Command::new("open")
-        .arg(pane)
+        .arg(url)
         .status()
         .map_err(|err| err.to_string())
         .and_then(|status| {

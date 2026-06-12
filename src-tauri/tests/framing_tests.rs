@@ -1,6 +1,6 @@
 use assert_matches::assert_matches;
 use bytes::{BufMut, BytesMut};
-use flowlink::{
+use flowlink_lib::{
     network::framing::{decode_frame, encode_frame, FrameError},
     protocol::{
         frame::{Frame, FrameHeader, HEADER_LEN, MAX_FRAME_LENGTH},

@@ -1,5 +1,5 @@
 use bytes::BytesMut;
-use flowlink::{
+use flowlink_lib::{
     network::framing::{decode_frame, encode_frame},
     protocol::{
         frame::{Frame, FrameHeader},

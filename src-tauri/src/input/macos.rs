@@ -1,5 +1,5 @@
 #[cfg(target_os = "macos")]
-use std::thread;
+use std::{sync::mpsc as std_mpsc, thread};
 
 #[cfg(target_os = "macos")]
 use core_foundation::runloop::CFRunLoop;
@@ -25,7 +25,7 @@ use crate::{
         },
         InputPlatform,
     },
-    platform::{macos_permissions, PermissionStatus},
+    platform::{macos_permissions, PermissionState, PermissionStatus},
     protocol::messages::MouseButton,
     storage::files::now_ms,
 };
@@ -58,7 +58,7 @@ impl Default for MacInputPlatform {
 #[cfg(target_os = "macos")]
 impl InputPlatform for MacInputPlatform {
     fn permissions(&self) -> PermissionStatus {
-        PermissionStatus::from_identity(&crate::identity::DeviceIdentity::generate())
+        macos_permission_status()
     }
 
     fn request_permissions(&self, kind: PermissionKind) -> InputResult<()> {
@@ -75,9 +75,12 @@ impl InputPlatform for MacInputPlatform {
     }
 
     fn start_capture(&self, tx: mpsc::Sender<LocalMouseEvent>) -> InputResult<CaptureHandle> {
+        let (run_loop_tx, run_loop_rx) = std_mpsc::channel();
         let join_handle = thread::Builder::new()
             .name("flowlink-mac-input-capture".into())
             .spawn(move || {
+                let run_loop = CFRunLoop::get_current();
+                let _ = run_loop_tx.send(run_loop.clone());
                 let events = vec![
                     CGEventType::MouseMoved,
                     CGEventType::LeftMouseDown,
@@ -89,7 +92,7 @@ impl InputPlatform for MacInputPlatform {
                     CGEventType::ScrollWheel,
                 ];
 
-                let _ = CGEventTap::with_enabled(
+                let result = CGEventTap::with_enabled(
                     CGEventTapLocation::Session,
                     CGEventTapPlacement::HeadInsertEventTap,
                     CGEventTapOptions::ListenOnly,
@@ -108,10 +111,19 @@ impl InputPlatform for MacInputPlatform {
                     },
                     CFRunLoop::run_current,
                 );
+                if result.is_err() {
+                    tracing::error!("failed to create macOS event tap");
+                }
             })
             .map_err(|err| InputError::Platform(err.to_string()))?;
 
-        Ok(CaptureHandle::detached(join_handle))
+        let run_loop = run_loop_rx
+            .recv()
+            .map_err(|err| InputError::Platform(format!("capture run loop unavailable: {err}")))?;
+
+        Ok(CaptureHandle::new(join_handle, move || {
+            run_loop.stop();
+        }))
     }
 
     fn inject(&self, event: RemoteMouseEvent) -> InputResult<()> {
@@ -121,6 +133,22 @@ impl InputPlatform for MacInputPlatform {
     fn warp_cursor(&self, position: Point) -> InputResult<()> {
         CGDisplay::warp_mouse_cursor_position(CGPoint::new(position.x, position.y))
             .map_err(|err| InputError::Platform(format!("CGWarpMouseCursorPosition failed: {err}")))
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_permission_status() -> PermissionStatus {
+    let accessibility = macos_permissions::accessibility_status();
+    let input_monitoring = macos_permissions::input_monitoring_status();
+
+    PermissionStatus {
+        accessibility,
+        input_monitoring,
+        screen_recording: PermissionState::Unsupported,
+        windows_input: PermissionState::Unsupported,
+        can_capture_mouse: input_monitoring == PermissionState::Granted,
+        can_inject_mouse: accessibility == PermissionState::Granted,
+        updated_at_ms: now_ms(),
     }
 }
 
@@ -153,6 +181,9 @@ fn local_event_from_cg(event_type: CGEventType, event: &CGEvent) -> Option<Local
             })
         }
         CGEventType::ScrollWheel => Some(LocalMouseEvent::Wheel {
+            // CoreGraphics axis 1 is vertical and axis 2 is horizontal. Point
+            // deltas align better with logical-pixel movement than raw wheel
+            // ticks on high-resolution trackpads.
             dx: event.get_integer_value_field(EventField::SCROLL_WHEEL_EVENT_POINT_DELTA_AXIS_2)
                 as f64,
             dy: event.get_integer_value_field(EventField::SCROLL_WHEEL_EVENT_POINT_DELTA_AXIS_1)
@@ -190,6 +221,7 @@ fn inject_event(event: RemoteMouseEvent) -> InputResult<()> {
                 CGEventType::MouseMoved,
                 CGPoint::new(current.x + dx, current.y + dy),
                 CGMouseButton::Left,
+                0,
             )
         }
         RemoteMouseEvent::MoveTo { x, y } => post_mouse_event(
@@ -197,14 +229,27 @@ fn inject_event(event: RemoteMouseEvent) -> InputResult<()> {
             CGEventType::MouseMoved,
             CGPoint::new(x, y),
             CGMouseButton::Left,
+            0,
         ),
         RemoteMouseEvent::Down { button, x, y } => {
-            let (event_type, button) = mac_button_event(button, true);
-            post_mouse_event(source, event_type, CGPoint::new(x, y), button)
+            let (event_type, mouse_button) = mac_button_event(button, true);
+            post_mouse_event(
+                source,
+                event_type,
+                CGPoint::new(x, y),
+                mouse_button,
+                mac_button_number(button),
+            )
         }
         RemoteMouseEvent::Up { button, x, y } => {
-            let (event_type, button) = mac_button_event(button, false);
-            post_mouse_event(source, event_type, CGPoint::new(x, y), button)
+            let (event_type, mouse_button) = mac_button_event(button, false);
+            post_mouse_event(
+                source,
+                event_type,
+                CGPoint::new(x, y),
+                mouse_button,
+                mac_button_number(button),
+            )
         }
         RemoteMouseEvent::Wheel { dx, dy } => {
             let event = CGEvent::new_scroll_event(
@@ -229,10 +274,12 @@ fn post_mouse_event(
     event_type: CGEventType,
     position: CGPoint,
     button: CGMouseButton,
+    button_number: i64,
 ) -> InputResult<()> {
     let event = CGEvent::new_mouse_event(source, event_type, position, button)
         .map_err(|_| InputError::Platform("failed to create mouse event".into()))?;
     event.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, FLOW_TAG);
+    event.set_integer_value_field(EventField::MOUSE_EVENT_BUTTON_NUMBER, button_number);
     event.post(CGEventTapLocation::HID);
     Ok(())
 }
@@ -264,6 +311,18 @@ fn mac_button_event(button: MouseButton, down: bool) -> (CGEventType, CGMouseBut
             },
             CGMouseButton::Center,
         ),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn mac_button_number(button: MouseButton) -> i64 {
+    match button {
+        MouseButton::Left => 0,
+        MouseButton::Right => 1,
+        MouseButton::Middle => 2,
+        MouseButton::Back => 3,
+        MouseButton::Forward => 4,
+        MouseButton::Other(value) => value as i64,
     }
 }
 

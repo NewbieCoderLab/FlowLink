@@ -1,4 +1,4 @@
-use std::thread::JoinHandle;
+use std::{thread::JoinHandle, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -93,20 +93,34 @@ pub enum InputError {
 
 pub type InputResult<T> = Result<T, InputError>;
 
-#[derive(Debug)]
 pub struct CaptureHandle {
     join_handle: Option<JoinHandle<()>>,
+    shutdown: Option<Box<dyn FnOnce() + Send + Sync>>,
 }
 
 impl CaptureHandle {
+    pub fn new(
+        join_handle: JoinHandle<()>,
+        shutdown: impl FnOnce() + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            join_handle: Some(join_handle),
+            shutdown: Some(Box::new(shutdown)),
+        }
+    }
+
     pub fn detached(join_handle: JoinHandle<()>) -> Self {
         Self {
             join_handle: Some(join_handle),
+            shutdown: None,
         }
     }
 
     pub fn noop() -> Self {
-        Self { join_handle: None }
+        Self {
+            join_handle: None,
+            shutdown: None,
+        }
     }
 
     pub fn is_running(&self) -> bool {
@@ -116,9 +130,27 @@ impl CaptureHandle {
 
 impl Drop for CaptureHandle {
     fn drop(&mut self) {
-        // Platform capture threads own OS run loops. S1 keeps them detached;
-        // later session work will add explicit shutdown handles.
-        let _ = self.join_handle.take();
+        if let Some(shutdown) = self.shutdown.take() {
+            shutdown();
+        }
+        if let Some(join_handle) = self.join_handle.take() {
+            let deadline = std::time::Instant::now() + Duration::from_millis(250);
+            while !join_handle.is_finished() && std::time::Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            if join_handle.is_finished() {
+                let _ = join_handle.join();
+            }
+        }
+    }
+}
+
+impl std::fmt::Debug for CaptureHandle {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CaptureHandle")
+            .field("is_running", &self.is_running())
+            .finish()
     }
 }
 

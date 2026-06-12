@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { UiAppStatus, UiLayoutConfig } from "./types";
 
 const mockStatus: UiAppStatus = {
@@ -88,5 +89,15 @@ export async function openPermissionSettings(permission: string): Promise<void> 
     await invoke("open_permission_settings", { permission });
   } catch {
     // Browser preview has no system settings integration.
+  }
+}
+
+export async function listenPermissionUpdates(
+  handler: () => void
+): Promise<UnlistenFn> {
+  try {
+    return await listen("permission:updated", handler);
+  } catch {
+    return () => {};
   }
 }

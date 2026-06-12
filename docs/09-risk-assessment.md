@@ -4,12 +4,12 @@
 
 | Risk | Impact | Likelihood | Mitigation |
 | --- | --- | --- | --- |
-| macOS permissions block event capture or injection | Core feature fails | High | Build platform spike first; clear onboarding; test signed builds |
+| macOS permissions block event capture or injection | Core feature fails | Medium | S1.1 has real preflight/request/settings links and focus refresh; still test signed builds |
 | Local cursor suppression is inconsistent | User experience feels rough | Medium | Use cursor parking and delta forwarding for V1; refine later |
 | Windows elevated apps reject injected input | Remote control appears broken in admin apps | Medium | Document limitation; detect repeated injection failure; optional elevated mode later |
 | LAN discovery fails on some networks | Users cannot connect easily | High | Provide IP direct connect; mDNS + UDP fallback |
 | Mouse latency exceeds target over Wi-Fi | UX degrades | Medium | TCP_NODELAY, compact binary protocol, move coalescing, metrics |
-| Self-injected event feedback loop | Cursor jumps or repeats | Medium | Tag/filter injected events where possible; ignore events while injecting; sequence tracking |
+| Self-injected event feedback loop | Cursor jumps or repeats | Low-Medium | macOS uses `kCGEventSourceUserData = FLOW_TAG`; Windows uses `dwExtraInfo`; keep spike checks |
 | DPI/coordinate mismatch | Pointer lands incorrectly | Medium | Normalize coordinates; test Retina and Windows scaling |
 | Security too weak for shared LAN | Unauthorized control risk | Medium | Pairing confirmation, peer key pinning, trusted peer validation |
 
@@ -23,10 +23,10 @@ Issue:
 
 Mitigation:
 
-- Preflight permission at startup.
-- Show permission checklist.
-- Provide button to open System Settings.
-- Re-check when app gains focus.
+- Preflight permission at startup is implemented for macOS.
+- Permission checklist is implemented in the Permissions tab.
+- Settings buttons open Accessibility / Input Monitoring pages with Privacy fallback.
+- Re-check when app gains focus is implemented in the frontend status hook.
 - Test with packaged app because dev and signed app identities differ.
 
 ### 2.2 Input Monitoring Permission
@@ -37,9 +37,10 @@ Issue:
 
 Mitigation:
 
-- Use `CGPreflightListenEventAccess`.
-- Call request API when available.
-- Display missing permission state without crashing.
+- `CGPreflightListenEventAccess` is implemented.
+- `CGRequestListenEventAccess` is called from the request path.
+- Missing permission state is displayed without crashing.
+- `examples/mac_input_spike.rs` can validate capture from a terminal process.
 
 ### 2.3 Screen Recording Permission
 
@@ -60,8 +61,7 @@ Issue:
 
 Mitigation:
 
-- Keep callback extremely small.
-- Push event into lock-free or bounded channel.
+- Callback only checks the self-injection tag and `try_send`s into a bounded channel.
 - Do not do network I/O or UI calls inside callback.
 - Re-enable tap if disabled.
 
@@ -293,4 +293,3 @@ No-Go:
 - Windows hook/injection is blocked on normal apps.
 - Mouse button up/down ordering is unreliable.
 - App can be controlled by unpaired peer.
-

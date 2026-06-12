@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getAppStatus } from "../app/tauri";
+import { getAppStatus, listenPermissionUpdates } from "../app/tauri";
 import type { UiAppStatus } from "../app/types";
 
 export function useAppStatus() {
@@ -16,6 +16,37 @@ export function useAppStatus() {
     void refresh();
   }, []);
 
+  useEffect(() => {
+    let disposed = false;
+    let unlistenPermissionUpdates: (() => void) | null = null;
+    const refreshIfActive = () => {
+      if (!disposed) {
+        void refresh();
+      }
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        refreshIfActive();
+      }
+    };
+
+    window.addEventListener("focus", refreshIfActive);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    void listenPermissionUpdates(refreshIfActive).then((unlisten) => {
+      if (disposed) {
+        unlisten();
+      } else {
+        unlistenPermissionUpdates = unlisten;
+      }
+    });
+
+    return () => {
+      disposed = true;
+      window.removeEventListener("focus", refreshIfActive);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      unlistenPermissionUpdates?.();
+    };
+  }, []);
+
   return { status, loading, refresh };
 }
-
