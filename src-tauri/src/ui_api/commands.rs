@@ -8,7 +8,7 @@ use crate::{
     ui_api::events,
     ui_api::models::{
         UiAppStatus, UiDevice, UiDiagnostics, UiError, UiLayoutConfig, UiPermissionStatus,
-        UiSessionStatus,
+        UiScreenTopology, UiSessionStatus,
     },
 };
 
@@ -48,6 +48,15 @@ pub async fn list_discovered_devices(
         .iter()
         .map(UiDevice::from)
         .collect())
+}
+
+#[tauri::command]
+pub async fn get_screen_topology(
+    state: State<'_, SharedAppState>,
+) -> Result<UiScreenTopology, UiError> {
+    let app = state.0.read().map_err(lock_error)?;
+    let topology = app.input.screen_topology().map_err(UiError::from)?;
+    Ok(UiScreenTopology::from(&topology))
 }
 
 #[tauri::command]

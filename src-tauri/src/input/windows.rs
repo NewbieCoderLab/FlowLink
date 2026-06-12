@@ -1,6 +1,7 @@
 #[cfg(target_os = "windows")]
 use std::{
     mem::size_of,
+    sync::mpsc as std_mpsc,
     sync::{Mutex, OnceLock},
     thread,
 };
@@ -10,7 +11,7 @@ use tokio::sync::mpsc;
 
 #[cfg(target_os = "windows")]
 use windows::Win32::{
-    Foundation::{BOOL, HINSTANCE, LPARAM, LRESULT, POINT, RECT, WPARAM},
+    Foundation::{BOOL, HINSTANCE, LPARAM, LRESULT, RECT, WPARAM},
     Graphics::Gdi::{EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO},
     UI::{
         HiDpi::{SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2},
@@ -18,13 +19,14 @@ use windows::Win32::{
             SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_HWHEEL,
             MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP,
             MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_VIRTUALDESK,
-            MOUSEEVENTF_WHEEL, MOUSEINPUT, WHEEL_DELTA,
+            MOUSEEVENTF_WHEEL, MOUSEINPUT,
         },
         WindowsAndMessaging::{
-            CallNextHookEx, GetMessageW, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK, MSG,
-            MSLLHOOKSTRUCT, WH_MOUSE_LL, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN,
-            WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONDOWN,
-            WM_RBUTTONUP, WM_XBUTTONDOWN, WM_XBUTTONUP, XBUTTON1, XBUTTON2,
+            CallNextHookEx, GetMessageW, PostThreadMessageW, SetWindowsHookExW,
+            UnhookWindowsHookEx, HHOOK, MSG, MSLLHOOKSTRUCT, WHEEL_DELTA, WH_MOUSE_LL,
+            WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEHWHEEL,
+            WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_QUIT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_XBUTTONDOWN,
+            WM_XBUTTONUP, XBUTTON1, XBUTTON2,
         },
     },
 };
@@ -38,7 +40,7 @@ use crate::{
         },
         InputPlatform,
     },
-    platform::PermissionStatus,
+    platform::{windows_permissions, PermissionStatus},
     protocol::messages::MouseButton,
     storage::files::now_ms,
 };
@@ -48,6 +50,11 @@ const FLOW_SIGNATURE: usize = 0xF10F_1117;
 
 #[cfg(target_os = "windows")]
 static CAPTURE_TX: OnceLock<Mutex<Option<mpsc::Sender<LocalMouseEvent>>>> = OnceLock::new();
+
+#[cfg(target_os = "windows")]
+fn is_self_injected_extra_info(extra_info: usize) -> bool {
+    extra_info == FLOW_SIGNATURE
+}
 
 #[cfg(target_os = "windows")]
 pub fn platform_name() -> &'static str {
@@ -65,6 +72,11 @@ impl WinInputPlatform {
 }
 
 #[cfg(target_os = "windows")]
+pub fn init_process_dpi_awareness_once() {
+    enable_dpi_awareness();
+}
+
+#[cfg(target_os = "windows")]
 impl Default for WinInputPlatform {
     fn default() -> Self {
         Self::new()
@@ -74,7 +86,7 @@ impl Default for WinInputPlatform {
 #[cfg(target_os = "windows")]
 impl InputPlatform for WinInputPlatform {
     fn permissions(&self) -> PermissionStatus {
-        PermissionStatus::from_identity(&crate::identity::DeviceIdentity::generate())
+        windows_permissions::permission_status()
     }
 
     fn request_permissions(&self, _kind: PermissionKind) -> InputResult<()> {
@@ -98,9 +110,12 @@ impl InputPlatform for WinInputPlatform {
             *guard = Some(tx);
         }
 
+        let (thread_id_tx, thread_id_rx) = std_mpsc::channel();
         let join_handle = thread::Builder::new()
             .name("flowlink-win-input-capture".into())
             .spawn(move || unsafe {
+                let thread_id = windows::Win32::System::Threading::GetCurrentThreadId();
+                let _ = thread_id_tx.send(thread_id);
                 let hook =
                     SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_hook_proc), HINSTANCE::default(), 0);
                 let Ok(hook) = hook else {
@@ -112,7 +127,13 @@ impl InputPlatform for WinInputPlatform {
             })
             .map_err(|err| InputError::Platform(err.to_string()))?;
 
-        Ok(CaptureHandle::detached(join_handle))
+        let thread_id = thread_id_rx
+            .recv()
+            .map_err(|err| InputError::Platform(format!("capture thread unavailable: {err}")))?;
+
+        Ok(CaptureHandle::new(join_handle, move || {
+            let _ = unsafe { PostThreadMessageW(thread_id, WM_QUIT, WPARAM(0), LPARAM(0)) };
+        }))
     }
 
     fn inject(&self, event: RemoteMouseEvent) -> InputResult<()> {
@@ -134,7 +155,7 @@ unsafe extern "system" fn mouse_hook_proc(code: i32, wparam: WPARAM, lparam: LPA
     }
 
     let event = unsafe { &*(lparam.0 as *const MSLLHOOKSTRUCT) };
-    if event.dwExtraInfo == FLOW_SIGNATURE {
+    if is_self_injected_extra_info(event.dwExtraInfo) {
         return unsafe { CallNextHookEx(HHOOK::default(), code, wparam, lparam) };
     }
 
@@ -256,31 +277,43 @@ fn inject_event(event: RemoteMouseEvent) -> InputResult<()> {
             )
         }
         RemoteMouseEvent::Down { button, .. } => {
-            send_mouse_input(0, 0, 0, button_flag(button, true))
+            let (mouse_data, flags) = button_input(button, true);
+            send_mouse_input(0, 0, mouse_data, flags)
         }
         RemoteMouseEvent::Up { button, .. } => {
-            send_mouse_input(0, 0, 0, button_flag(button, false))
+            let (mouse_data, flags) = button_input(button, false);
+            send_mouse_input(0, 0, mouse_data, flags)
         }
         RemoteMouseEvent::Wheel { dx, dy } => {
-            if dy != 0.0 {
-                send_mouse_input(
-                    0,
-                    0,
-                    (dy.round() as i32 * WHEEL_DELTA) as u32,
-                    MOUSEEVENTF_WHEEL,
-                )?;
-            }
-            if dx != 0.0 {
-                send_mouse_input(
-                    0,
-                    0,
-                    (dx.round() as i32 * WHEEL_DELTA) as u32,
-                    MOUSEEVENTF_HWHEEL,
-                )?;
+            for (mouse_data, flags) in wheel_inputs(dx, dy) {
+                send_mouse_input(0, 0, mouse_data, flags)?;
             }
             Ok(())
         }
     }
+}
+
+#[cfg(target_os = "windows")]
+fn wheel_inputs(
+    dx: f64,
+    dy: f64,
+) -> Vec<(
+    u32,
+    windows::Win32::UI::Input::KeyboardAndMouse::MOUSE_EVENT_FLAGS,
+)> {
+    let mut inputs = Vec::with_capacity(2);
+    if dy != 0.0 {
+        inputs.push((wheel_mouse_data(dy), MOUSEEVENTF_WHEEL));
+    }
+    if dx != 0.0 {
+        inputs.push((wheel_mouse_data(dx), MOUSEEVENTF_HWHEEL));
+    }
+    inputs
+}
+
+#[cfg(target_os = "windows")]
+fn wheel_mouse_data(notches: f64) -> u32 {
+    (notches.round() as i32 * WHEEL_DELTA as i32) as u32
 }
 
 #[cfg(target_os = "windows")]
@@ -312,29 +345,37 @@ fn send_mouse_input(
 }
 
 #[cfg(target_os = "windows")]
-fn button_flag(
+fn button_input(
     button: MouseButton,
     down: bool,
-) -> windows::Win32::UI::Input::KeyboardAndMouse::MOUSE_EVENT_FLAGS {
+) -> (
+    u32,
+    windows::Win32::UI::Input::KeyboardAndMouse::MOUSE_EVENT_FLAGS,
+) {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP};
+
     match (button, down) {
-        (MouseButton::Left, true) => MOUSEEVENTF_LEFTDOWN,
-        (MouseButton::Left, false) => MOUSEEVENTF_LEFTUP,
-        (MouseButton::Right, true) => MOUSEEVENTF_RIGHTDOWN,
-        (MouseButton::Right, false) => MOUSEEVENTF_RIGHTUP,
-        (
-            MouseButton::Middle | MouseButton::Back | MouseButton::Forward | MouseButton::Other(_),
-            true,
-        ) => MOUSEEVENTF_MIDDLEDOWN,
-        (
-            MouseButton::Middle | MouseButton::Back | MouseButton::Forward | MouseButton::Other(_),
-            false,
-        ) => MOUSEEVENTF_MIDDLEUP,
+        (MouseButton::Left, true) => (0, MOUSEEVENTF_LEFTDOWN),
+        (MouseButton::Left, false) => (0, MOUSEEVENTF_LEFTUP),
+        (MouseButton::Right, true) => (0, MOUSEEVENTF_RIGHTDOWN),
+        (MouseButton::Right, false) => (0, MOUSEEVENTF_RIGHTUP),
+        (MouseButton::Middle | MouseButton::Other(_), true) => (0, MOUSEEVENTF_MIDDLEDOWN),
+        (MouseButton::Middle | MouseButton::Other(_), false) => (0, MOUSEEVENTF_MIDDLEUP),
+        (MouseButton::Back, true) => (XBUTTON1 as u32, MOUSEEVENTF_XDOWN),
+        (MouseButton::Back, false) => (XBUTTON1 as u32, MOUSEEVENTF_XUP),
+        (MouseButton::Forward, true) => (XBUTTON2 as u32, MOUSEEVENTF_XDOWN),
+        (MouseButton::Forward, false) => (XBUTTON2 as u32, MOUSEEVENTF_XUP),
     }
 }
 
 #[cfg(target_os = "windows")]
 fn normalize_virtual_position(x: f64, y: f64) -> InputResult<(i32, i32)> {
     let bounds = virtual_screen_bounds();
+    normalize_position_in_bounds(x, y, bounds)
+}
+
+#[cfg(target_os = "windows")]
+fn normalize_position_in_bounds(x: f64, y: f64, bounds: Rect) -> InputResult<(i32, i32)> {
     if bounds.width <= 1.0 || bounds.height <= 1.0 {
         return Err(InputError::Platform("invalid virtual screen bounds".into()));
     }
@@ -441,4 +482,117 @@ fn enable_dpi_awareness() {
     ENABLE_DPI.get_or_init(|| unsafe {
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     });
+}
+
+#[cfg(all(test, target_os = "windows"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn button_input_maps_back_forward_to_xbutton_flags_and_data() {
+        let back_down = button_input(MouseButton::Back, true);
+        let back_up = button_input(MouseButton::Back, false);
+        let forward_down = button_input(MouseButton::Forward, true);
+        let forward_up = button_input(MouseButton::Forward, false);
+
+        assert_eq!(
+            back_down,
+            (
+                XBUTTON1 as u32,
+                windows::Win32::UI::Input::KeyboardAndMouse::MOUSEEVENTF_XDOWN
+            )
+        );
+        assert_eq!(
+            back_up,
+            (
+                XBUTTON1 as u32,
+                windows::Win32::UI::Input::KeyboardAndMouse::MOUSEEVENTF_XUP
+            )
+        );
+        assert_eq!(
+            forward_down,
+            (
+                XBUTTON2 as u32,
+                windows::Win32::UI::Input::KeyboardAndMouse::MOUSEEVENTF_XDOWN
+            )
+        );
+        assert_eq!(
+            forward_up,
+            (
+                XBUTTON2 as u32,
+                windows::Win32::UI::Input::KeyboardAndMouse::MOUSEEVENTF_XUP
+            )
+        );
+    }
+
+    #[test]
+    fn self_injected_extra_info_matches_flow_signature_only() {
+        assert!(is_self_injected_extra_info(FLOW_SIGNATURE));
+        assert!(!is_self_injected_extra_info(0));
+        assert!(!is_self_injected_extra_info(FLOW_SIGNATURE + 1));
+    }
+
+    #[test]
+    fn wheel_inputs_map_logical_axes_to_windows_flags() {
+        let inputs = wheel_inputs(1.0, -1.0);
+
+        assert_eq!(inputs.len(), 2);
+        assert_eq!(
+            inputs[0],
+            ((-(WHEEL_DELTA as i32)) as u32, MOUSEEVENTF_WHEEL)
+        );
+        assert_eq!(inputs[1], (WHEEL_DELTA, MOUSEEVENTF_HWHEEL));
+    }
+
+    #[test]
+    fn wheel_inputs_round_to_wheel_delta_notches() {
+        let inputs = wheel_inputs(-2.0, 2.0);
+
+        assert_eq!(inputs[0], (WHEEL_DELTA * 2, MOUSEEVENTF_WHEEL));
+        assert_eq!(
+            inputs[1],
+            ((-((WHEEL_DELTA * 2) as i32)) as u32, MOUSEEVENTF_HWHEEL)
+        );
+    }
+
+    #[test]
+    fn dpi_awareness_init_is_safe_to_call_repeatedly() {
+        init_process_dpi_awareness_once();
+        init_process_dpi_awareness_once();
+    }
+
+    #[test]
+    fn normalizes_absolute_coordinates_against_virtual_desktop_bounds() {
+        let bounds = Rect {
+            x: -1920.0,
+            y: 0.0,
+            width: 3840.0,
+            height: 1080.0,
+        };
+
+        assert_eq!(
+            normalize_position_in_bounds(-1920.0, 0.0, bounds).unwrap(),
+            (0, 0)
+        );
+        assert_eq!(
+            normalize_position_in_bounds(1919.0, 1079.0, bounds).unwrap(),
+            (65_535, 65_535)
+        );
+        assert_eq!(
+            normalize_position_in_bounds(0.0, 540.0, bounds).unwrap(),
+            (32_776, 32_798)
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_virtual_desktop_bounds() {
+        let bounds = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 1.0,
+            height: 1080.0,
+        };
+
+        assert!(normalize_position_in_bounds(0.0, 0.0, bounds).is_err());
+    }
 }

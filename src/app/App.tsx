@@ -126,6 +126,9 @@ export function App() {
   const nextLanguage: AppLanguage = language === "zh" ? "en" : "zh";
   const sessionLabel = t.states.sessions[status.session.state];
   const controlOwnerLabel = t.states.controlOwners[status.session.controlOwner];
+  const windowsIntegrityHint =
+    t.permissions.windowsIntegrityHint?.(status.permission.windowsIntegrityLevel) ??
+    `Integrity level: ${status.permission.windowsIntegrityLevel ?? "unknown"}; elevated windows may be blocked by Windows UIPI`;
   const rttValue =
     status.session.lastHeartbeatRttMs != null
       ? `${status.session.lastHeartbeatRttMs} ${t.overview.metrics.rttUnit}`
@@ -369,6 +372,7 @@ export function App() {
               <span className="row-label">{t.permissions.windowsInput}</span>
               <span className="row-value">
                 <small>{t.permissions.windowsInputHint}</small>
+                <small>{windowsIntegrityHint}</small>
               </span>
               <span className="row-action">
                 <span className={`pill ${status.permission.windowsInput}`}>

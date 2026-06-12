@@ -63,6 +63,7 @@ export interface AppCopy {
     inputMonitoringHint: string;
     windowsInput: string;
     windowsInputHint: string;
+    windowsIntegrityHint?: (level: string | null) => string;
     open: string;
   };
   network: {
@@ -324,6 +325,8 @@ export const copy: Record<AppLanguage, AppCopy> = {
       inputMonitoringHint: "Required to observe local mouse movement; grant it to the current FlowLink app",
       windowsInput: "Windows Input",
       windowsInputHint: "Normal user privileges are sufficient",
+      windowsIntegrityHint: (level) =>
+        `Integrity level: ${level ?? "unknown"}; elevated windows may be blocked by Windows UIPI`,
       open: "Open Settings"
     },
     network: {
