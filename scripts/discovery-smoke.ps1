@@ -1,5 +1,6 @@
 param(
     [int]$Seconds = 3,
+    [string]$PeerIp = "",
     [int]$ServicePort = 42424,
     [int]$UdpPort = 42425
 )
@@ -15,7 +16,11 @@ if (-not (Test-Path $cargo)) {
 
 Push-Location $tauriDir
 try {
-    & $cargo run --example discovery_smoke -- --seconds $Seconds --service-port $ServicePort --udp-port $UdpPort
+    $smokeArgs = @("--seconds", $Seconds, "--service-port", $ServicePort, "--udp-port", $UdpPort)
+    if ($PeerIp) {
+        $smokeArgs += @("--peer-ip", $PeerIp)
+    }
+    & $cargo run --example discovery_smoke -- @smokeArgs
 } finally {
     Pop-Location
 }
