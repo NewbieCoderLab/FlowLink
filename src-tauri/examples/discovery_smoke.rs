@@ -1,5 +1,6 @@
 use flowlink_lib::{
-    config::defaults::default_app_config, discovery::start_discovery_tasks,
+    config::defaults::default_app_config,
+    discovery::{start_discovery_tasks, udp::broadcast_destinations},
     identity::DeviceIdentity,
 };
 
@@ -23,6 +24,10 @@ async fn main() {
         identity.device_name,
         config.network.listen_port,
         config.discovery.udp_port
+    );
+    println!(
+        "udp broadcast targets: {:?}",
+        broadcast_destinations(config.discovery.udp_port)
     );
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(256);

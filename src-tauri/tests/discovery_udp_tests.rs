@@ -2,8 +2,8 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 
 use flowlink_lib::{
     discovery::udp::{
-        announce_to_peer, build_announce, decode_announce, peer_from_announce,
-        should_ignore_announce,
+        announce_to_peer, broadcast_destinations, build_announce, decode_announce,
+        peer_from_announce, should_ignore_announce,
     },
     identity::{DeviceIdentity, PrivateKeyRef},
     protocol::messages::{ArchType, DiscoverySource, OsType},
@@ -94,6 +94,11 @@ fn udp_announce_rejects_unspecified_source_address() {
     let source = SocketAddr::from((IpAddr::V4(Ipv4Addr::UNSPECIFIED), 42425));
 
     assert!(peer_from_announce(&announce, source).is_err());
+}
+
+#[test]
+fn udp_broadcast_destinations_include_limited_broadcast() {
+    assert!(broadcast_destinations(42425).contains(&SocketAddr::from((Ipv4Addr::BROADCAST, 42425))));
 }
 
 fn test_identity(device_id: &str) -> DeviceIdentity {

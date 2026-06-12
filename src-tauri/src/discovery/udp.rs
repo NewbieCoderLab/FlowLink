@@ -1,9 +1,11 @@
 use std::{
+    collections::BTreeSet,
     net::{Ipv4Addr, SocketAddr, UdpSocket},
     thread,
     time::Duration,
 };
 
+use if_addrs::IfAddr;
 use serde::{Deserialize, Serialize};
 use socket2::{Domain, Protocol, Socket, Type};
 use tokio::sync::mpsc;
@@ -42,14 +44,16 @@ pub fn start_udp_announcer(
     interval_ms: u64,
 ) -> Result<thread::JoinHandle<()>, DiscoveryError> {
     let socket = broadcast_socket(0)?;
-    let destination = SocketAddr::from((Ipv4Addr::BROADCAST, udp_port));
+    let destinations = broadcast_destinations(udp_port);
     let interval = Duration::from_millis(interval_ms.max(100));
 
     thread::Builder::new()
         .name("flowlink-udp-announcer".into())
         .spawn(move || loop {
-            if let Err(err) = announce_to_peer(&socket, &identity, service_port, destination) {
-                warn!("UDP announce failed: {err}");
+            for destination in &destinations {
+                if let Err(err) = announce_to_peer(&socket, &identity, service_port, *destination) {
+                    warn!("UDP announce to {destination} failed: {err}");
+                }
             }
             thread::sleep(interval);
         })
@@ -155,6 +159,25 @@ pub fn peer_from_announce(
 
 pub fn should_ignore_announce(announce: &UdpAnnounce, local_device_id: &str) -> bool {
     announce.id == local_device_id
+}
+
+pub fn broadcast_destinations(port: u16) -> Vec<SocketAddr> {
+    let mut destinations = BTreeSet::from([SocketAddr::from((Ipv4Addr::BROADCAST, port))]);
+
+    if let Ok(interfaces) = if_addrs::get_if_addrs() {
+        for interface in interfaces {
+            if interface.is_loopback() {
+                continue;
+            }
+            if let IfAddr::V4(addr) = interface.addr {
+                if let Some(broadcast) = addr.broadcast {
+                    destinations.insert(SocketAddr::from((broadcast, port)));
+                }
+            }
+        }
+    }
+
+    destinations.into_iter().collect()
 }
 
 fn broadcast_socket(port: u16) -> Result<UdpSocket, DiscoveryError> {
