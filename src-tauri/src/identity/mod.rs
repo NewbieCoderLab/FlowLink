@@ -42,7 +42,7 @@ impl OsArchExt for DeviceIdentity {
 
 impl DeviceIdentity {
     pub fn generate() -> Self {
-        let key_material = keys::generate_public_key_stub();
+        let keypair = keys::generate_device_keypair();
         Self {
             schema_version: 1,
             device_id: Uuid::new_v4().to_string(),
@@ -51,7 +51,7 @@ impl DeviceIdentity {
             arch: current_arch(),
             app_version: "0.1.0".into(),
             protocol_version: 1,
-            public_key: key_material,
+            public_key: keys::serialize_public_key(&keypair),
             private_key_ref: PrivateKeyRef::FileEncrypted {
                 path: "identity.key".into(),
             },

@@ -22,12 +22,14 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 bytes = "1"
 bincode = "1"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
 sha2 = "0.10"
 rand = "0.8"
 hostname = "0.4"
 mdns-sd = "0.13"
 socket2 = "0.5"
 if-addrs = "0.13"
+zeroize = { version = "1", features = ["derive"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.10"

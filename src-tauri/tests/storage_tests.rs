@@ -2,8 +2,12 @@ use tempfile::tempdir;
 
 use flowlink_lib::{
     config::{AppConfig, LayoutConfig},
+    identity::PrivateKeyRef,
     protocol::messages::LayoutDirection,
-    storage::files::{write_json_atomic, LayoutStore, StorageError, StorageManager},
+    storage::{
+        files::{write_json_atomic, LayoutStore, StorageError, StorageManager},
+        secret::{FileSecretStore, SecretStore},
+    },
 };
 use std::fs;
 
@@ -138,6 +142,26 @@ fn schema_mismatch_returns_error_without_replacing_file() {
         .filter(|entry| is_corrupt_backup(entry.file_name().to_string_lossy().as_ref()))
         .count();
     assert_eq!(backup_count, 0);
+}
+
+#[test]
+fn file_secret_store_saves_and_loads_private_key() {
+    let dir = tempdir().expect("tempdir");
+    let store = FileSecretStore::new(dir.path().to_path_buf());
+    let key = [7_u8; 32];
+
+    let key_ref = store.save_private_key(&key).expect("save private key");
+    let loaded = store.load_private_key().expect("load private key");
+
+    assert_eq!(loaded, key);
+    assert_eq!(
+        fs::read(dir.path().join("identity.key")).expect("read key file"),
+        key
+    );
+    assert!(matches!(
+        key_ref,
+        PrivateKeyRef::FileEncrypted { ref path } if path == "identity.key"
+    ));
 }
 
 fn is_corrupt_backup(file_name: &str) -> bool {
