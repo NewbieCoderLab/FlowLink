@@ -21,10 +21,10 @@ use windows::Win32::{
             MOUSEEVENTF_WHEEL, MOUSEINPUT, WHEEL_DELTA,
         },
         WindowsAndMessaging::{
-            CallNextHookEx, GetMessageW, SetWindowsHookExW, HHOOK, MSG, MSLLHOOKSTRUCT,
-            WH_MOUSE_LL, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP,
-            WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONDOWN, WM_RBUTTONUP,
-            WM_XBUTTONDOWN, WM_XBUTTONUP, XBUTTON1, XBUTTON2,
+            CallNextHookEx, GetMessageW, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK, MSG,
+            MSLLHOOKSTRUCT, WH_MOUSE_LL, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN,
+            WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONDOWN,
+            WM_RBUTTONUP, WM_XBUTTONDOWN, WM_XBUTTONUP, XBUTTON1, XBUTTON2,
         },
     },
 };
@@ -224,9 +224,10 @@ fn high_word(value: u32) -> u16 {
 }
 
 #[cfg(target_os = "windows")]
-unsafe fn run_message_loop(_hook: HHOOK) {
+fn run_message_loop(hook: HHOOK) {
     let mut msg = MSG::default();
     while unsafe { GetMessageW(&mut msg, None, 0, 0) }.as_bool() {}
+    let _ = unsafe { UnhookWindowsHookEx(hook) };
 }
 
 #[cfg(target_os = "windows")]
