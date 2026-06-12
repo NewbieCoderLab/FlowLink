@@ -146,6 +146,7 @@ fn macos_permission_status() -> PermissionStatus {
         input_monitoring,
         screen_recording: PermissionState::Unsupported,
         windows_input: PermissionState::Unsupported,
+        windows_integrity_level: None,
         can_capture_mouse: input_monitoring == PermissionState::Granted,
         can_inject_mouse: accessibility == PermissionState::Granted,
         updated_at_ms: now_ms(),

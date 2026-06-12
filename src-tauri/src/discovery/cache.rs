@@ -42,7 +42,8 @@ impl DiscoveryCache {
         let stale_ids = self
             .peers
             .iter()
-            .filter_map(|(device_id, peer)| (peer.last_seen_ms < cutoff).then(|| device_id.clone()))
+            .filter(|(_, peer)| peer.last_seen_ms < cutoff)
+            .map(|(device_id, _)| device_id.clone())
             .collect::<Vec<_>>();
 
         stale_ids
