@@ -60,42 +60,56 @@ pub fn start_discovery_tasks(
     let mut mdns_daemon = None;
 
     if config.mdns_enabled {
-        let daemon =
-            mdns_sd::ServiceDaemon::new().map_err(|err| DiscoveryError::Mdns(err.to_string()))?;
-        let daemon_for_browser = daemon.clone();
-        let local_device_id = identity.device_id.clone();
-        let mdns_tx = tx.clone();
-        mdns::register_mdns_service(&daemon, &identity, network.listen_port)?;
-        handles.push(mdns::start_mdns_browser(
-            &daemon_for_browser,
-            local_device_id,
-            mdns_tx,
-        )?);
-        mdns_daemon = Some(daemon);
+        match start_mdns_tasks(&identity, network.listen_port, tx.clone()) {
+            Ok((daemon, handle)) => {
+                handles.push(handle);
+                mdns_daemon = Some(daemon);
+            }
+            Err(err) => warn!("mDNS discovery failed to start; UDP fallback may still work: {err}"),
+        }
     }
 
     if config.udp_broadcast_enabled {
-        handles.push(udp::start_udp_announcer(
+        match udp::start_udp_announcer(
             identity.clone(),
             network.listen_port,
             config.udp_port,
             config.announce_interval_ms,
-        )?);
-        handles.push(udp::start_udp_listener(
-            config.udp_port,
-            identity.device_id.clone(),
-            tx,
-        )?);
+        ) {
+            Ok(handle) => handles.push(handle),
+            Err(err) => warn!("UDP discovery announcer failed to start: {err}"),
+        }
+
+        match udp::start_udp_listener(config.udp_port, identity.device_id.clone(), tx) {
+            Ok(handle) => handles.push(handle),
+            Err(err) => warn!("UDP discovery listener failed to start: {err}"),
+        }
     }
 
     if handles.is_empty() {
-        warn!("discovery tasks are disabled");
+        return Err(DiscoveryError::Mdns(
+            "no discovery tasks could be started".into(),
+        ));
     }
 
     Ok(DiscoveryRuntime {
         _handles: handles,
         _mdns_daemon: mdns_daemon,
     })
+}
+
+fn start_mdns_tasks(
+    identity: &DeviceIdentity,
+    service_port: u16,
+    tx: mpsc::Sender<DiscoveredPeer>,
+) -> Result<(mdns_sd::ServiceDaemon, thread::JoinHandle<()>), DiscoveryError> {
+    let daemon =
+        mdns_sd::ServiceDaemon::new().map_err(|err| DiscoveryError::Mdns(err.to_string()))?;
+    let daemon_for_browser = daemon.clone();
+    let local_device_id = identity.device_id.clone();
+    mdns::register_mdns_service(&daemon, identity, service_port)?;
+    let handle = mdns::start_mdns_browser(&daemon_for_browser, local_device_id, tx)?;
+    Ok((daemon, handle))
 }
 
 impl DiscoveredPeer {
