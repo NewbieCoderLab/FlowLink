@@ -8,7 +8,10 @@ use thiserror::Error;
 
 use crate::{
     config::{AppConfig, LayoutConfig},
-    discovery::{cache::DiscoveryCache, DiscoveredPeer},
+    discovery::{
+        cache::{CacheUpsertOutcome, DiscoveryCache},
+        DiscoveredPeer,
+    },
     identity::DeviceIdentity,
     input::{platform_input, InputPlatform},
     platform::PermissionStatus,
@@ -91,6 +94,19 @@ impl AppContext {
 
     pub fn list_discovered_devices(&self) -> Vec<DiscoveredPeer> {
         self.discovery.list()
+    }
+
+    pub fn upsert_discovered_peer(&mut self, peer: DiscoveredPeer) -> CacheUpsertOutcome {
+        self.discovery.upsert(peer)
+    }
+
+    pub fn handle_discovered_peer(&mut self, peer: DiscoveredPeer) -> Option<DiscoveredPeer> {
+        let outcome = self.discovery.upsert(peer.clone());
+        outcome.is_new.then_some(peer)
+    }
+
+    pub fn evict_stale_discovered_peers(&mut self, now_ms: u64) -> Vec<DiscoveredPeer> {
+        self.discovery.evict_stale(now_ms)
     }
 
     pub fn diagnostics(&self) -> DiagnosticsSnapshot {

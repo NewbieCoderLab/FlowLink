@@ -31,6 +31,7 @@ export interface UiPermissionStatus {
   inputMonitoring: PermissionState;
   screenRecording: PermissionState;
   windowsInput: PermissionState;
+  windowsIntegrityLevel: "low" | "medium" | "high" | "system" | "unknown" | null;
   canCaptureMouse: boolean;
   canInjectMouse: boolean;
   updatedAtMs: number;
@@ -56,6 +57,25 @@ export interface UiDiagnostics {
   trustedPeerCount: number;
   layoutCount: number;
   configPath: string;
+}
+
+export interface UiRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface UiDisplayInfo {
+  id: number;
+  bounds: UiRect;
+  scaleFactor: number;
+  isPrimary: boolean;
+}
+
+export interface UiScreenTopology {
+  displays: UiDisplayInfo[];
+  virtualBounds: UiRect;
 }
 
 export interface UiAppStatus {

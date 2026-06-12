@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { UiAppStatus, UiLayoutConfig } from "./types";
+import type { UiAppStatus, UiLayoutConfig, UiScreenTopology } from "./types";
 
 const mockStatus: UiAppStatus = {
   localDevice: {
@@ -19,6 +19,7 @@ const mockStatus: UiAppStatus = {
     inputMonitoring: "unknown",
     screenRecording: "unsupported",
     windowsInput: "unknown",
+    windowsIntegrityLevel: null,
     canCaptureMouse: false,
     canInjectMouse: false,
     updatedAtMs: Date.now()
@@ -59,6 +60,16 @@ const mockStatus: UiAppStatus = {
   }
 };
 
+const mockScreenTopology: UiScreenTopology = {
+  displays: [],
+  virtualBounds: {
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0
+  }
+};
+
 export async function getAppStatus(): Promise<UiAppStatus> {
   try {
     return await invoke<UiAppStatus>("get_app_status");
@@ -72,6 +83,14 @@ export async function saveLayout(layout: UiLayoutConfig): Promise<void> {
     await invoke("save_layout", { layout });
   } catch {
     mockStatus.savedLayouts = [layout];
+  }
+}
+
+export async function getScreenTopology(): Promise<UiScreenTopology> {
+  try {
+    return await invoke<UiScreenTopology>("get_screen_topology");
+  } catch {
+    return mockScreenTopology;
   }
 }
 
@@ -97,6 +116,21 @@ export async function listenPermissionUpdates(
 ): Promise<UnlistenFn> {
   try {
     return await listen("permission:updated", handler);
+  } catch {
+    return () => {};
+  }
+}
+
+export async function listenDeviceDiscoveryUpdates(
+  handler: () => void
+): Promise<UnlistenFn> {
+  try {
+    const unlistenDiscovered = await listen("device:discovered", handler);
+    const unlistenStale = await listen("device:stale", handler);
+    return () => {
+      unlistenDiscovered();
+      unlistenStale();
+    };
   } catch {
     return () => {};
   }

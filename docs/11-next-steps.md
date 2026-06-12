@@ -45,7 +45,7 @@
 - 数据结构：`AppConfig / NetworkConfig / DiscoveryConfig / LayoutConfig / TrustedPeer / DeviceIdentity / SessionSnapshot / PermissionStatus` 已定义。
 - 测试基线：`src-tauri/tests/` 已覆盖 framing、pairing code、storage、AppContext 启动发现列表；当前 `cargo test` 共 18 个集成测试全绿。
 - 质量基线：本地 `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`npm run build` 均已通过。
-- CI 基线：`.github/workflows/ci.yml` 已配置 macOS + Windows 双 runner，执行 Rust fmt/clippy/test 与前端 build。
+- CI 基线：`.github/workflows/ci.yml` 已配置 macOS + Windows 双 runner，执行 Rust fmt/check/clippy/test 与前端 build。
 - 日志基线：`telemetry::logging::init_logging` 已接入 `tracing-appender` daily rolling appender，优先写入 Tauri `app_log_dir()`，并用 `Once` 防重复初始化。
 - 启动清理：真实 `AppContext::load_or_default` 不再注入 demo peer；demo 设备仅保留在前端 mock fallback 中。
 
@@ -56,8 +56,8 @@
 - 配对码：`pairing::code::generate_pairing_code` 按 00 §5.6 公式实现，输出 6 位十进制。
 - 边缘检测：`input::edge::is_handoff_edge_hit` 已支持 `corner_guard_px` 与 `edge_thickness_px`。
 - 重连退避：`network::reconnect::next_backoff_ms` 实现指数退避（未含 jitter）。
-- 发现缓存：`DiscoveryCache` 实现 upsert + stale 过滤。
-- 平台输入抽象：`InputPlatform` trait 与 `NoopInputPlatform` 已存在，`AppContext` 已持有平台输入实现。
+- 发现缓存：`DiscoveryCache` 实现 upsert、stale 过滤与 `evict_stale`，可驱动 `device:discovered` / `device:stale` 事件。
+- 平台输入抽象：`InputPlatform` trait、`NoopInputPlatform`、`AppContext` 平台输入持有与 `get_screen_topology` Tauri 命令已接通；`PermissionStatus` 由具体 `InputPlatform` 返回，不再从 identity 推导。
 - macOS 输入雏形：`MacInputPlatform` 已有 Event Tap 监听、CGEvent 注入、自注入标记过滤、屏幕拓扑查询和权限查询/请求入口，仍待 spike 实机验收。
 - Windows 输入雏形：`WinInputPlatform` 已有 `WH_MOUSE_LL` 监听、`SendInput` 注入、自注入标记过滤、DPI awareness 与显示器枚举，仍待 Windows 实机编译/验收。
 
@@ -73,15 +73,15 @@ UI 层：
 
 | 位置 | 现状 | 说明 |
 | --- | --- | --- |
-| `discovery/mdns.rs` | `info!("placeholder")` 一行 | 未真正发布 / 浏览 mDNS |
-| `discovery/udp.rs` | `info!("placeholder")` 一行 | 没有 UDP 广播 |
+| `discovery/mdns.rs` | 已实现 `_mac22win._tcp.local.` 发布、浏览解析和本机过滤 | 仍需双机 LAN smoke |
+| `discovery/udp.rs` | 已实现 JSON announce 发送、监听解析和 UDP fallback | 仍需双机 LAN smoke |
 | `network/listener.rs` | 仅 `format!` 出地址 | 没有 `TcpListener::bind` 与 accept loop |
 | `network/connector.rs` | 仅 `format!` 出地址 | 没有连接尝试 |
 | `network/heartbeat.rs` | 仅返回 `Duration` 常量 | 没有心跳 ping/pong |
 | `input/macos.rs` | Event Tap / CGEvent 注入初版 | 仍缺 spike 实机验收、关闭机制、方向/按钮细节确认 |
 | `input/windows.rs` | Hook / SendInput 初版 | 仍缺 Windows 实机编译、关闭机制、侧键注入和 DPI 验收 |
 | `platform/macos_permissions.rs` | 已接 `AXIsProcessTrustedWithOptions` / `CGPreflightListenEventAccess` | 设置面板 URL 和 UI 刷新闭环仍需 S1 验证 |
-| `platform/windows_permissions.rs` | 普通输入返回 granted | 没有完整 integrity level / 管理员窗口限制检测 |
+| `platform/windows_permissions.rs` | 普通输入返回 granted，并读取当前进程 integrity level | 仍需 S6/S7 验证管理员窗口 UIPI 限制的用户提示 |
 | `session/controller.rs` | 仅 `emergency_disconnect` | 没有完整状态机驱动 |
 | `pairing/flow.rs` | `PairingFlow::new` 生成 id 与过期时间 | 没有 request/response/confirm 三段，没有 trust 写入 |
 | `identity/keys.rs` | `generate_public_key_stub` 8 行 | 没有 Ed25519 真密钥对 |
@@ -101,7 +101,7 @@ UI 层：
 
 - `protocol::frame::HEADER_LEN = 10`，按 00 §5.3 是 10 字节（`version + type + flags + seq` = 2+2+2+4），与 BUF 写入一致；但若把 `length u32` 也算进 header 的话总长是 14。代码以"length 不计入 header"为口径，文档需明确这一点（已在 §5.1 锁定）。
 - `DiscoveredPeer::demo_peer()` 函数仍保留给 mock/未来测试，但真实 `AppContext::load_or_default` 已不再硬编码注入。
-- `PermissionStatus::from_identity` 仍存在；当前平台输入实现已能返回真实/平台状态，但状态模型仍需在 S1 里整理成完全平台驱动。
+- `PermissionStatus` 已改为完全由 `InputPlatform::permissions()` 提供；macOS、Windows、noop 分别返回对应平台状态。
 - `MessageType::Other(u8)` 在 `MouseButton` 中带元组数据但 `#[repr(u16)]` 仅在 `MessageType` 上，注意序列化路径 — 鼠标按钮 wire format 在 §5.2 中重新约定。
 
 ---
@@ -367,19 +367,25 @@ windows = { version = "0.58", features = [
 
 验证：
 
-- `examples/win_input_spike.rs` 启动后能打印 1000 个鼠标事件并回放 100 个移动事件到桌面。
-- 用 Spy++ 或自带的诊断面板观察 `dwExtraInfo == FLOW_SIGNATURE` 的事件被跳过。
+- `examples/win_input_spike.rs` 默认启动后能打印 1000 个鼠标 hook 事件。
+- `--inject-move` 回放 100 个可见移动事件到桌面。
+- `--inject-click` 依次注入 left / right / middle click。
+- `--inject-wheel` 验证 vertical wheel up/down 与 horizontal wheel right/left。
+- `--verify-self-filter` 验证 `dwExtraInfo == FLOW_SIGNATURE` 的自注入事件不会进入 capture 队列。
+- `--topology` / `--warp-corners` 用于多显示器 bounds 与绝对定位人工检查。
+- QA 记录见 `bench/results/s1.2-windows.md`。
 
 退出标准：
 
-- 在 Win10 22H2 与 Win11 上都能监听 + 注入。
-- 高 DPI 多显示器配置下绝对定位误差 ≤ 1 像素。
+- 在 Win10 22H2 与 Win11 上都能监听 + 注入（需手动 QA 勾选）。
+- 高 DPI 多显示器配置下绝对定位误差 ≤ 1 像素（`--warp-corners` 人工验证）。
+- Permissions Tab 显示 Windows 当前 integrity level，用于解释管理员窗口 UIPI 限制。
 
-#### S1.3 平台抽象与降级（1 天）
+#### S1.3 平台抽象与降级（已完成，手动跨机 QA 待勾选）
 
 任务：
 
-- `src-tauri/src/input/mod.rs` 定义 trait：
+- [x] `src-tauri/src/input/mod.rs` 定义 trait：
 
   ```rust
   pub trait InputPlatform: Send + Sync {
@@ -399,35 +405,61 @@ windows = { version = "0.58", features = [
   }
   ```
 
-- `noop.rs` 给 Linux/CI 测试环境用，所有方法返回 `Unsupported`。
+- [x] `noop.rs` 给 Linux/CI 测试环境用，权限状态返回 `Unsupported`，监听/注入/warp 返回 `InputError::Unsupported`，屏幕拓扑返回空拓扑且不 panic。
+- [x] `PermissionStatus` 完全来自 `InputPlatform::permissions()`；Windows 状态由 `platform/windows_permissions.rs::permission_status()` 组装，包含 `windows_integrity_level`。
+- [x] 新增 `get_screen_topology` Tauri 命令，后端返回 `UiScreenTopology` JSON。
+- [x] 前端新增 `UiRect / UiDisplayInfo / UiScreenTopology` 类型和 `getScreenTopology()` 调用。
+- [x] `InputError` 统一映射为 recoverable `UiError` code：`input_unsupported`、`input_permission_denied`、`input_capture_already_running`、`input_platform_error`。
+- [x] 新增跨平台 smoke 入口 `src-tauri/examples/platform_input_smoke.rs`，同一命令可在 macOS/Windows/noop 上检查权限、拓扑、监听与注入。
+- [x] CI 明确在 macOS + Windows runner 上执行 `cargo check --all-targets`、fmt、clippy、test。
+
+新增/更新测试：
+
+```text
+src-tauri/tests/noop_input_tests.rs
+src-tauri/tests/ui_screen_topology_tests.rs
+src-tauri/tests/ui_input_error_tests.rs
+```
+
+本地验证：
+
+```powershell
+C:\Users\25994\.cargo\bin\cargo.exe test --test noop_input_tests
+C:\Users\25994\.cargo\bin\cargo.exe test --test ui_screen_topology_tests
+C:\Users\25994\.cargo\bin\cargo.exe test --test ui_input_error_tests
+C:\Users\25994\.cargo\bin\cargo.exe test --example platform_input_smoke
+C:\Users\25994\.cargo\bin\cargo.exe check --all-targets
+npm.cmd run build
+```
 
 退出标准：
 
-- 跨平台 trait 在 macOS / Windows / Linux CI 都能编译。
+- 跨平台 trait 在 macOS / Windows CI 都会编译；noop fallback 由本地测试覆盖。
 - `AppContext` 持有 `Box<dyn InputPlatform>`，前端 Permissions Tab 状态来自真实查询。
+- 前端可通过 `getScreenTopology()` 获取后端屏幕拓扑 JSON。
 
-### Sprint S2：mDNS 与 UDP 发现（3 天）
+### Sprint S2：mDNS 与 UDP 发现（已完成，手动双机 QA 待勾选）
 
 目标：让两台设备在同 LAN 内 3 秒内互相出现。
 
 任务：
 
-- `src-tauri/src/discovery/mdns.rs`：用 `mdns-sd = "0.13"`，发布 `_mac22win._tcp.local.`，TXT 记录按 00 §1.8.1：
+- [x] `src-tauri/src/discovery/mdns.rs`：用 `mdns-sd = "0.13"`，发布 `_mac22win._tcp.local.`，TXT 记录按 00 §1.8.1：
 
   ```text
   device_id, device_name, os, arch, app_version, protocol_version, pairing
   ```
 
-- 浏览同服务，回调将 `ServiceEvent::ServiceResolved` 转成 `DiscoveredPeer` 并发到 `mpsc::Sender<DiscoveredPeer>`，由 `AppContext` 写入 `DiscoveryCache`。
-- 过滤本机：用 `device_id == local_identity.device_id` 比对，不要靠 IP。
-- `udp.rs`：监听 `0.0.0.0:42425` 接收广播，每 1.5 秒向 `255.255.255.255:42425` 发一帧 JSON：
+- [x] 浏览同服务，回调将 `ServiceEvent::ServiceResolved` 转成 `DiscoveredPeer` 并发到 `mpsc::Sender<DiscoveredPeer>`，由 `AppContext` 写入 `DiscoveryCache`。
+- [x] 过滤本机：用 `device_id == local_identity.device_id` 比对，不要靠 IP。
+- [x] `udp.rs`：监听 `0.0.0.0:42425` 接收广播，每 1.5 秒向 `255.255.255.255:42425` 发一帧 JSON：
 
   ```json
   {"v":1,"id":"...","name":"...","os":"macos","port":42424}
   ```
 
-- `discovery::mod` 添加 `start(announce_tx, peers_tx)` 异步任务，把 mDNS + UDP 合并写入同一个 `DiscoveryCache`，按 `device_id` 去重，`source` 字段记录最先发现的来源。
-- 前端：`device:discovered`、`device:stale` 两类事件改为 `tauri::AppHandle::emit_all`，`useAppStatus` 订阅刷新（参考 §5.3）。
+- [x] `discovery::mod` 添加 `start_discovery_tasks(...)`，把 mDNS + UDP 合并到同一个 discovery channel，由 `AppContext` 写入同一个 `DiscoveryCache`。
+- [x] 后端发出 `device:discovered`、`device:stale` 两类事件，`useAppStatus` 订阅后刷新（参考 §5.3）。
 
 改动文件：
 
@@ -438,8 +470,11 @@ src-tauri/src/discovery/mod.rs
 src-tauri/src/discovery/cache.rs       (加 evict_stale + 时间戳更新)
 src-tauri/src/app/context.rs           (后台任务装配)
 src-tauri/Cargo.toml
+src-tauri/examples/discovery_smoke.rs
 src/hooks/useAppStatus.ts              (订阅事件)
 src/app/tauri.ts                       (新增 listenDiscoveryEvents)
+scripts/discovery-smoke.sh
+scripts/discovery-smoke.ps1
 ```
 
 新增依赖：`mdns-sd = "0.13"`、`socket2 = "0.5"`、`if-addrs = "0.13"`。
@@ -448,10 +483,16 @@ src/app/tauri.ts                       (新增 listenDiscoveryEvents)
 
 ```bash
 # host A
-cd src-tauri && cargo run --features discovery_dev_log
+./scripts/discovery-smoke.sh 3
 # host B（另一台机器）
-cd src-tauri && cargo run --features discovery_dev_log
+./scripts/discovery-smoke.sh 3
 # 期望：3s 内双方日志都出现对端 device_id
+```
+
+Windows PowerShell：
+
+```powershell
+.\scripts\discovery-smoke.ps1 -Seconds 3
 ```
 
 退出标准：
@@ -628,7 +669,7 @@ src-tauri/tests/heartbeat_tests.rs       (new)
 
 任务：
 
-- `ScreenTopology` 在 S1 已经能从 `InputPlatform::screen_topology()` 拿到。新增 Tauri 命令 `get_screen_topology() -> UiScreenTopology`。
+- `ScreenTopology` 在 S1 已经能从 `InputPlatform::screen_topology()` 拿到，并已暴露 Tauri 命令 `get_screen_topology() -> UiScreenTopology`。
 - 前端 `LayoutEditor` 重写：
   - Canvas 上画两块矩形（本机 + 远端）。
   - 可拖拽吸附到 `left/right/top/bottom`，松手后调 `save_layout`。
@@ -860,7 +901,7 @@ permission = "all_granted"
 | macOS 权限失败 | 高 | 高（未实现检测）| S1 |
 | 光标抑制不稳 | 中 | 中（V1 不抑制）| 文档说明 + S6 验证 |
 | Windows 控不了管理员窗口 | 中 | 中 | S7 文案 + V2 elevated helper |
-| mDNS 被网络阻断 | 高 | 高（未实现）| S2（UDP fallback + IP 直连） |
+| mDNS 被网络阻断 | 高 | 中（mDNS + UDP fallback 已实现，仍需双机网络 QA）| S2 / P059 smoke + IP 直连 |
 | Wi-Fi 抖动 | 中 | 待 S4 后实测 | S4 + S6 |
 | 自注入反馈循环 | 中 | 中（仅设计，未实现标记）| S1.1/S1.2 |
 | DPI / Retina 误差 | 中 | 中 | S5 |

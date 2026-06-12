@@ -12,6 +12,14 @@ fn platform_input_resolves_for_current_target() {
         );
     }
 
+    #[cfg(target_os = "windows")]
+    {
+        assert_ne!(
+            permissions.windows_input,
+            flowlink_lib::platform::PermissionState::Unsupported
+        );
+    }
+
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         assert_eq!(

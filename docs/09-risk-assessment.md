@@ -6,11 +6,11 @@
 | --- | --- | --- | --- |
 | macOS permissions block event capture or injection | Core feature fails | Medium | S1.1 has real preflight/request/settings links and focus refresh; still test signed builds |
 | Local cursor suppression is inconsistent | User experience feels rough | Medium | Use cursor parking and delta forwarding for V1; refine later |
-| Windows elevated apps reject injected input | Remote control appears broken in admin apps | Medium | Document limitation; detect repeated injection failure; optional elevated mode later |
-| LAN discovery fails on some networks | Users cannot connect easily | High | Provide IP direct connect; mDNS + UDP fallback |
+| Windows elevated apps reject injected input | Remote control appears broken in admin apps | Medium | Show integrity level in UI; document UIPI limitation; optional elevated mode later |
+| LAN discovery fails on some networks | Users cannot connect easily | Medium | mDNS + UDP fallback are implemented; keep IP direct connect as required V1 path |
 | Mouse latency exceeds target over Wi-Fi | UX degrades | Medium | TCP_NODELAY, compact binary protocol, move coalescing, metrics |
 | Self-injected event feedback loop | Cursor jumps or repeats | Low-Medium | macOS uses `kCGEventSourceUserData = FLOW_TAG`; Windows uses `dwExtraInfo`; keep spike checks |
-| DPI/coordinate mismatch | Pointer lands incorrectly | Medium | Normalize coordinates; test Retina and Windows scaling |
+| DPI/coordinate mismatch | Pointer lands incorrectly | Medium | Normalize coordinates; unit-test Windows virtual desktop math; test Retina and Windows scaling |
 | Security too weak for shared LAN | Unauthorized control risk | Medium | Pairing confirmation, peer key pinning, trusted peer validation |
 
 ## 2. macOS Platform Risks
@@ -76,7 +76,8 @@ Issue:
 Mitigation:
 
 - V1 runs as normal user.
-- Document limitation.
+- Permissions tab exposes the current process integrity level.
+- `bench/results/s1.2-windows.md` documents the normal-user limitation.
 - Add warning when active elevated window is suspected or repeated `SendInput` issues occur.
 - V2 can offer optional elevated helper if truly needed.
 
@@ -91,6 +92,7 @@ Mitigation:
 - Dedicated thread for hook.
 - Minimal callback work.
 - Forward events to Rust channel.
+- Capture handle posts `WM_QUIT`, unhooks with `UnhookWindowsHookEx`, and clears the sender on shutdown.
 - Watchdog restart if hook stops.
 
 ### 3.3 Antivirus Or Security Software
@@ -117,7 +119,8 @@ Issue:
 Mitigation:
 
 - IP direct connect is a required V1 path.
-- UDP broadcast fallback.
+- UDP broadcast fallback is implemented and covered by local tests.
+- Run two-machine discovery smoke on representative routers before MVP go/no-go.
 - UI should say discovery unavailable and offer IP entry.
 
 ### 4.2 Firewall Prompts
